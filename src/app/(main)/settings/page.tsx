@@ -289,10 +289,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bio">Giới thiệu</Label>
-                  <Textarea id="bio" placeholder="Viết vài dòng về bản thân..." rows={3} />
-                </div>
+
 
                 <div className="flex justify-end">
                   <Button>
@@ -312,7 +309,6 @@ export default function SettingsPage() {
                 {[
                   { name: "Google", connected: true, icon: Globe },
                   { name: "GitHub", connected: false, icon: Globe },
-                  { name: "Slack", connected: true, icon: Globe },
                 ].map((service) => (
                   <div key={service.name} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -714,19 +710,6 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Múi giờ</Label>
-                    <Select defaultValue="asia-bangkok">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="asia-bangkok">Bangkok, Hanoi, Jakarta (GMT+7)</SelectItem>
-                        <SelectItem value="asia-singapore">Singapore (GMT+8)</SelectItem>
-                        <SelectItem value="asia-tokyo">Tokyo (GMT+9)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
                     <Label>Định dạng ngày</Label>
                     <Select defaultValue="dd-mm-yyyy">
                       <SelectTrigger>
@@ -739,20 +722,8 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Định dạng giờ</Label>
-                    <Select defaultValue="24h">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="24h">24 giờ</SelectItem>
-                        <SelectItem value="12h">12 giờ (AM/PM)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end mt-4">
                   <Button>
                     <Save className="mr-2 h-4 w-4" />
                     Lưu thay đổi

@@ -49,6 +49,11 @@ export default function ProjectDetailPage() {
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false)
   const [isEditTaskOpen, setIsEditTaskOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false)
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
+  const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
@@ -118,6 +123,29 @@ export default function ProjectDetailPage() {
     toast.success("Xóa công việc thành công")
   }
 
+  const handleInviteMember = () => {
+    if (!inviteEmail && selectedMembers.length === 0) {
+      toast.error("Vui lòng chọn thành viên hoặc nhập email")
+      return
+    }
+    if (inviteEmail) {
+      toast.success(`Đã gửi lời mời đến ${inviteEmail}`)
+    } else {
+      toast.success(`Đã thêm ${selectedMembers.length} thành viên vào dự án`)
+    }
+    setIsInviteMemberOpen(false)
+    setInviteEmail("")
+    setSelectedMembers([])
+  }
+
+  const handleDeleteProject = () => {
+    // TODO: Call API to delete project
+    toast.success(`Đã xóa dự án "${project.name}"`)
+    setIsDeleteProjectOpen(false)
+    // Redirect to projects page
+    window.location.href = "/projects"
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -159,7 +187,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="flex gap-2 ml-12 md:ml-0">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => setIsInviteMemberOpen(true)}>
             <UserPlus className="mr-2 h-4 w-4" />
             Mời
           </Button>
@@ -178,12 +206,12 @@ export default function ProjectDetailPage() {
                 <Edit className="mr-2 h-4 w-4" />
                 Chỉnh sửa
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsProjectSettingsOpen(true)}>
                 <Settings className="mr-2 h-4 w-4" />
                 Cài đặt
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem className="text-red-600" onClick={() => setIsDeleteProjectOpen(true)}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Xóa dự án
               </DropdownMenuItem>
@@ -923,6 +951,261 @@ export default function ProjectDetailPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Invite Member Dialog */}
+      <Dialog open={isInviteMemberOpen} onOpenChange={setIsInviteMemberOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Mời thành viên</DialogTitle>
+            <DialogDescription>
+              Mời người dùng tham gia dự án {project.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Tabs defaultValue="email" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="email">Gửi email</TabsTrigger>
+              <TabsTrigger value="select">Chọn từ danh sách</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="email" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Email</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Người nhận sẽ nhận được email mời tham gia dự án
+                </p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="select" className="space-y-4">
+              <div className="space-y-2">
+                <Label>Chọn thành viên</Label>
+                <div className="border rounded-md p-3 max-h-[300px] overflow-y-auto space-y-2">
+                  {mockUsers
+                    .filter(u => !project.members.includes(u.id))
+                    .map((user) => (
+                      <div key={user.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`invite-${user.id}`}
+                          checked={selectedMembers.includes(user.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedMembers([...selectedMembers, user.id])
+                            } else {
+                              setSelectedMembers(selectedMembers.filter(id => id !== user.id))
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`invite-${user.id}`} className="cursor-pointer flex items-center gap-2 flex-1">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={user.avatarUrl || "/placeholder.svg"} />
+                            <AvatarFallback className="text-xs">{getInitials(user.name)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{user.name}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                          </div>
+                        </Label>
+                      </div>
+                    ))}
+                  {mockUsers.filter(u => !project.members.includes(u.id)).length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Tất cả người dùng đã là thành viên
+                    </p>
+                  )}
+                </div>
+                {selectedMembers.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Đã chọn {selectedMembers.length} thành viên
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsInviteMemberOpen(false)
+              setInviteEmail("")
+              setSelectedMembers([])
+            }}>
+              Hủy
+            </Button>
+            <Button onClick={handleInviteMember}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Gửi lời mời
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Project Settings Dialog */}
+      <Dialog open={isProjectSettingsOpen} onOpenChange={setIsProjectSettingsOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Cài đặt dự án</DialogTitle>
+            <DialogDescription>
+              Quản lý cài đặt và cấu hình cho dự án {project.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Project Info */}
+            <div className="space-y-4">
+              <h4 className="font-medium">Thông tin cơ bản</h4>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Tên dự án</Label>
+                  <Input defaultValue={project.name} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mô tả</Label>
+                  <Textarea defaultValue={project.description} rows={2} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Màu sắc</Label>
+                    <div className="flex gap-2">
+                      {["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"].map((color) => (
+                        <button
+                          key={color}
+                          className="h-8 w-8 rounded-full border-2 hover:scale-110 transition-transform"
+                          style={{ backgroundColor: color, borderColor: project.color === color ? '#000' : 'transparent' }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Trạng thái</Label>
+                    <Select defaultValue={project.status}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Đang thực hiện</SelectItem>
+                        <SelectItem value="on-hold">Tạm dừng</SelectItem>
+                        <SelectItem value="completed">Hoàn thành</SelectItem>
+                        <SelectItem value="archived">Đã lưu trữ</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="space-y-4">
+              <h4 className="font-medium">Thời gian</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Ngày bắt đầu</Label>
+                  <Input type="date" defaultValue={project.startDate?.split('T')[0]} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Ngày kết thúc</Label>
+                  <Input type="date" defaultValue={project.endDate?.split('T')[0]} />
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy */}
+            <div className="space-y-4">
+              <h4 className="font-medium">Quyền riêng tư</h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Dự án công khai</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Cho phép mọi người trong tổ chức xem dự án
+                    </p>
+                  </div>
+                  <Checkbox defaultChecked />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Cho phép thành viên mời người khác</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Thành viên có thể mời người khác vào dự án
+                    </p>
+                  </div>
+                  <Checkbox defaultChecked />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProjectSettingsOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={() => {
+              toast.success("Đã lưu cài đặt dự án")
+              setIsProjectSettingsOpen(false)
+            }}>
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Project Dialog */}
+      <Dialog open={isDeleteProjectOpen} onOpenChange={setIsDeleteProjectOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Xóa dự án</DialogTitle>
+            <DialogDescription>
+              Bạn có chắc chắn muốn xóa dự án này không?
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-900/50 p-4">
+              <div className="flex gap-3">
+                <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-medium text-red-900 dark:text-red-200">Cảnh báo</h4>
+                  <p className="text-sm text-red-800 dark:text-red-300">
+                    Hành động này không thể hoàn tác. Tất cả dữ liệu liên quan đến dự án sẽ bị xóa vĩnh viễn:
+                  </p>
+                  <ul className="text-sm text-red-800 dark:text-red-300 list-disc list-inside space-y-1 mt-2">
+                    <li>{projectTasks.length} công việc</li>
+                    <li>{project.members.length} thành viên</li>
+                    <li>Tất cả bình luận và tệp đính kèm</li>
+                    <li>Lịch sử hoạt động</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Để xác nhận, vui lòng nhập tên dự án: <strong>{project.name}</strong></Label>
+              <Input
+                placeholder={`Nhập "${project.name}" để xác nhận`}
+                className="font-mono"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteProjectOpen(false)}>
+              Hủy
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteProject}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Xóa dự án
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

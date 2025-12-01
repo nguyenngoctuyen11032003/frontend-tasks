@@ -257,6 +257,8 @@ export interface Chat {
   updatedAt: string
 }
 
+export type ChatRoom = Chat
+
 export interface Message {
   id: string
   chatId: string

@@ -16,6 +16,9 @@ import {
   X,
   UserPlus,
   Hash,
+  BellOff,
+  Bell,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,12 +26,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { MessageList } from "@/components/chat/message-list"
 import { ChatInput } from "@/components/chat/chat-input"
+import { GroupInfoSheet } from "@/components/chat/group-info-sheet"
 import { mockUsers, mockChatRooms, mockMessages } from "@/mocks/data"
 import { convertMockMessages, type MockMessage } from "@/lib/chat"
 import { cn } from "@/lib/utils"
@@ -51,6 +65,10 @@ export default function ChatPage() {
   const [channelName, setChannelName] = useState("")
   const [channelDescription, setChannelDescription] = useState("")
   const [isPublicChannel, setIsPublicChannel] = useState(false)
+  const [mutedRooms, setMutedRooms] = useState<Set<string>>(new Set())
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [roomToDelete, setRoomToDelete] = useState<ChatRoom | null>(null)
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false)
   
   const currentUserId = "user-1" // Replace with actual user ID from auth - Using user-1 to match mock data
 
@@ -274,6 +292,9 @@ export default function ChatPage() {
                       <div className="flex items-center gap-2 flex-1 min-w-0">
                         {room.type === "group" && <Hash className="h-3 w-3 text-muted-foreground shrink-0" />}
                         <span className="font-medium truncate text-sm">{info.name}</span>
+                        {mutedRooms.has(room.id) && (
+                          <BellOff className="h-3 w-3 text-muted-foreground shrink-0" title="Đã tắt thông báo" />
+                        )}
                       </div>
                       {lastMessage && (
                         <span className="text-xs text-muted-foreground shrink-0">{formatTime(lastMessage.createdAt)}</span>
@@ -362,9 +383,38 @@ export default function ChatPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Xem hồ sơ</DropdownMenuItem>
-                  <DropdownMenuItem>Tắt thông báo</DropdownMenuItem>
-                  <DropdownMenuItem>Xóa cuộc trò chuyện</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setIsGroupInfoOpen(true)}>Xem hồ sơ</DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => {
+                      setMutedRooms(prev => {
+                        const next = new Set(prev)
+                        if (next.has(selectedRoom.id)) {
+                          next.delete(selectedRoom.id)
+                          toast.success("Đã bật thông báo")
+                        } else {
+                          next.add(selectedRoom.id)
+                          toast.success("Đã tắt thông báo")
+                        }
+                        return next
+                      })
+                    }}
+                  >
+                    {mutedRooms.has(selectedRoom.id) ? (
+                      <><Bell className="mr-2 h-4 w-4" />Bật thông báo</>
+                    ) : (
+                      <><BellOff className="mr-2 h-4 w-4" />Tắt thông báo</>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => {
+                      setRoomToDelete(selectedRoom)
+                      setIsDeleteDialogOpen(true)
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Xóa cuộc trò chuyện
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -419,6 +469,46 @@ export default function ChatPage() {
           Chọn một cuộc trò chuyện để bắt đầu
         </div>
       )}
+
+      {/* Group Info Sheet */}
+      <GroupInfoSheet 
+        open={isGroupInfoOpen}
+        onOpenChange={setIsGroupInfoOpen}
+        room={selectedRoom}
+        currentUserId={currentUserId}
+      />
+
+      {/* Delete Conversation Confirmation */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa cuộc trò chuyện?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa cuộc trò chuyện này không? Tất cả tin nhắn sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (roomToDelete) {
+                  // Remove messages from this room
+                  setMessages(prev => prev.filter(m => m.chatId !== roomToDelete.id))
+                  // Deselect if this was selected
+                  if (selectedRoom?.id === roomToDelete.id) {
+                    setSelectedRoom(null)
+                  }
+                  toast.success("Đã xóa cuộc trò chuyện")
+                  setRoomToDelete(null)
+                }
+              }}
+            >
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Create Group Dialog */}
       <Dialog open={isCreateGroupOpen} onOpenChange={setIsCreateGroupOpen}>

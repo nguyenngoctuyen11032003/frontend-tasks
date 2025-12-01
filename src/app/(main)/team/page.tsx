@@ -209,10 +209,10 @@ export default function TeamPage() {
                 </Select>
                 <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
                   <SelectTrigger className="w-full sm:w-[150px]">
-                    <SelectValue placeholder="Phòng ban" />
+                    <SelectValue placeholder="Nhóm" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tất cả phòng ban</SelectItem>
+                    <SelectItem value="all">Tất cả nhóm</SelectItem>
                     {departments.map((dept) => (
                       <SelectItem key={dept} value={dept!}>
                         {dept}
@@ -279,7 +279,7 @@ export default function TeamPage() {
                 )}
                 {departmentFilter !== "all" && (
                   <Badge variant="secondary" className="gap-1">
-                    Phòng ban: {departmentFilter}
+                    Nhóm: {departmentFilter}
                     <button onClick={() => setDepartmentFilter("all")} className="hover:text-destructive">
                       <XIcon className="h-3 w-3" />
                     </button>
@@ -414,16 +414,16 @@ export default function TeamPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium">Thành viên</th>
-                    <th className="text-left p-4 font-medium">Phòng ban</th>
-                    <th className="text-left p-4 font-medium">Vai trò</th>
-                    <th className="text-left p-4 font-medium">Công việc</th>
-                    <th className="text-left p-4 font-medium">Trạng thái</th>
-                    <th className="text-right p-4 font-medium">Hành động</th>
-                  </tr>
-                </thead>
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left p-4 font-medium">Thành viên</th>
+                      <th className="text-left p-4 font-medium">Nhóm</th>
+                      <th className="text-left p-4 font-medium">Vai trò</th>
+                      <th className="text-left p-4 font-medium">Công việc</th>
+                      <th className="text-left p-4 font-medium">Trạng thái</th>
+                      <th className="text-right p-4 font-medium">Hành động</th>
+                    </tr>
+                  </thead>
                 <tbody>
                   {filteredUsers.map((user, index) => {
                     const stats = getUserStats(user.id)

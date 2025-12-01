@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { CheckCircle2, Clock, FolderOpen, TrendingUp, Plus, ArrowRight, Users, Target } from "lucide-react"
+import { CheckCircle2, Clock, FolderOpen, TrendingUp, Plus, ArrowRight, Users, Target, CalendarIcon, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, subWeeks, subMonths, subYears } from "date-fns"
 import { vi } from "date-fns/locale"
 import { toast } from "sonner"
 
@@ -99,6 +99,79 @@ export default function DashboardPage() {
   const router = useRouter()
   const urgentTasks = mockTasks.filter((t) => t.priority === "urgent" && t.status !== "done").slice(0, 3)
   const recentProjects = mockProjects.slice(0, 3)
+
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>("today")
+  const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined,
+  })
+
+  // Get date range based on filter
+  const getDateRange = () => {
+    const now = new Date()
+    switch (dateFilter) {
+      case "today":
+        return { from: startOfDay(now), to: endOfDay(now) }
+      case "yesterday":
+        return { from: startOfDay(subDays(now, 1)), to: endOfDay(subDays(now, 1)) }
+      case "thisWeek":
+        return { from: startOfWeek(now, { locale: vi }), to: endOfWeek(now, { locale: vi }) }
+      case "lastWeek":
+        const lastWeek = subWeeks(now, 1)
+        return { from: startOfWeek(lastWeek, { locale: vi }), to: endOfWeek(lastWeek, { locale: vi }) }
+      case "thisMonth":
+        return { from: startOfMonth(now), to: endOfMonth(now) }
+      case "lastMonth":
+        const lastMonth = subMonths(now, 1)
+        return { from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) }
+      case "thisYear":
+        return { from: startOfYear(now), to: endOfYear(now) }
+      case "lastYear":
+        const lastYear = subYears(now, 1)
+        return { from: startOfYear(lastYear), to: endOfYear(lastYear) }
+      case "custom":
+        return { from: customDateRange.from, to: customDateRange.to }
+      default:
+        return { from: startOfDay(now), to: endOfDay(now) }
+    }
+  }
+
+  const handleDateFilterChange = (filter: string) => {
+    setDateFilter(filter)
+    if (filter !== "custom") {
+      const range = getDateRange()
+      toast.success("Đã cập nhật bộ lọc thời gian")
+    }
+  }
+
+  const handleCustomDateApply = () => {
+    if (customDateRange.from && customDateRange.to) {
+      setDateFilter("custom")
+      toast.success("Đã áp dụng khoảng thời gian tùy chỉnh")
+    } else {
+      toast.error("Vui lòng chọn cả ngày bắt đầu và kết thúc")
+    }
+  }
+
+  const getFilterLabel = () => {
+    switch (dateFilter) {
+      case "today": return "Hôm nay"
+      case "yesterday": return "Hôm qua"
+      case "thisWeek": return "Tuần này"
+      case "lastWeek": return "Tuần trước"
+      case "thisMonth": return "Tháng này"
+      case "lastMonth": return "Tháng trước"
+      case "thisYear": return "Năm nay"
+      case "lastYear": return "Năm trước"
+      case "custom":
+        if (customDateRange.from && customDateRange.to) {
+          return `${format(customDateRange.from, "dd/MM/yyyy")} - ${format(customDateRange.to, "dd/MM/yyyy")}`
+        }
+        return "Tùy chỉnh"
+      default: return "Hôm nay"
+    }
+  }
 
   // Analytics data
   const taskCompletionData = [
@@ -188,10 +261,92 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold md:text-3xl">Tổng quan</h1>
           <p className="text-muted-foreground">Chào mừng quay lại! Đây là tóm tắt hoạt động của bạn.</p>
         </div>
-        <Button onClick={() => router.push("/tasks")}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo công việc mới
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {/* Date Filter Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-auto">
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {getFilterLabel()}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Ngày</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("today")}>
+                Hôm nay
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("yesterday")}>
+                Hôm qua
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Tuần</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("thisWeek")}>
+                Tuần này
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("lastWeek")}>
+                Tuần trước
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Tháng</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("thisMonth")}>
+                Tháng này
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("lastMonth")}>
+                Tháng trước
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Năm</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("thisYear")}>
+                Năm nay
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateFilterChange("lastYear")}>
+                Năm trước
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Tùy chỉnh</DropdownMenuLabel>
+              <div className="p-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {customDateRange.from && customDateRange.to ? (
+                        <>
+                          {format(customDateRange.from, "dd/MM/yyyy")} - {format(customDateRange.to, "dd/MM/yyyy")}
+                        </>
+                      ) : (
+                        <span>Chọn khoảng thời gian</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={{ from: customDateRange.from, to: customDateRange.to }}
+                      onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
+                      numberOfMonths={2}
+                      locale={vi}
+                    />
+                    <div className="border-t p-3">
+                      <Button onClick={handleCustomDateApply} size="sm" className="w-full">
+                        Áp dụng
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button onClick={() => router.push("/tasks")}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo công việc mới
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}

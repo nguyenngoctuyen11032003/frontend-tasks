@@ -21,6 +21,8 @@ import {
   TrendingUp,
   Activity,
   UserCheck,
+  Lock,
+  Unlock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -73,6 +75,12 @@ export default function AdminPage() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<string>("member")
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [isDeleteUserDialogOpen, setIsDeleteUserDialogOpen] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<User | null>(null)
+  const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
+  const [newUserData, setNewUserData] = useState({ name: "", email: "", password: "", phone: "", role: "member" })
 
   const getInitials = (name: string) => {
     return name
@@ -176,13 +184,67 @@ export default function AdminPage() {
     setInviteRole("member")
   }
 
-  const togglePermission = (permission: Permission) => {
-    setEditingRole((prev) => ({
-      ...prev,
-      permissions: prev.permissions?.includes(permission)
-        ? prev.permissions.filter((p) => p !== permission)
-        : [...(prev.permissions || []), permission],
-    }))
+  const handleAddUser = () => {
+    if (!newUserData.name || !newUserData.email || !newUserData.password) {
+      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc")
+      return
+    }
+    const newUser: User = {
+      id: `user-${Date.now()}`,
+      name: newUserData.name,
+      email: newUserData.email,
+      phone: newUserData.phone || undefined,
+      role: "Member",
+      roles: [newUserData.role as any],
+      avatarUrl: null,
+      status: "offline",
+    }
+    setUsers((prev) => [...prev, newUser])
+    toast.success("Đã thêm người dùng mới", {
+      description: `Email: ${newUserData.email}`
+    })
+    setIsAddUserDialogOpen(false)
+    setNewUserData({ name: "", email: "", password: "", phone: "", role: "member" })
+  }
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user)
+    setIsEditUserDialogOpen(true)
+  }
+
+  const handleSaveEditUser = () => {
+    if (!editingUser) return
+    setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? editingUser : u)))
+    toast.success("Đã cập nhật thông tin người dùng")
+    setIsEditUserDialogOpen(false)
+    setEditingUser(null)
+  }
+
+  const handleDeleteUser = (user: User) => {
+    setUserToDelete(user)
+    setIsDeleteUserDialogOpen(true)
+  }
+
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
+      toast.success(`Đã xóa người dùng "${userToDelete.name}"`)
+    }
+    setIsDeleteUserDialogOpen(false)
+    setUserToDelete(null)
+  }
+
+  const handleToggleLockUser = (userId: string) => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          const isLocked = (u as any).isLocked
+          toast.success(isLocked ? `Đã mở khóa tài khoản` : `Đã khóa tài khoản`)
+          return { ...u, isLocked: !isLocked }
+        }
+        return u
+      })
+    )
   }
 
   const toggleAllPermissionsInGroup = (groupKey: string, permissions: Permission[]) => {
@@ -477,10 +539,16 @@ export default function AdminPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button onClick={() => setIsInviteDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Mời người dùng
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setIsAddUserDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Thêm người dùng
+              </Button>
+              <Button variant="outline" onClick={() => setIsInviteDialogOpen(true)}>
+                <Mail className="mr-2 h-4 w-4" />
+                Mời người dùng
+              </Button>
+            </div>
           </div>
 
           <Card>
@@ -490,7 +558,7 @@ export default function AdminPage() {
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="text-left p-4 font-medium">Người dùng</th>
-                      <th className="text-left p-4 font-medium">Phòng ban</th>
+                      <th className="text-left p-4 font-medium">Nhóm</th>
                       <th className="text-left p-4 font-medium">Vai trò</th>
                       <th className="text-left p-4 font-medium">Trạng thái</th>
                       <th className="text-right p-4 font-medium">Hành động</th>
@@ -562,21 +630,45 @@ export default function AdminPage() {
                           </div>
                         </td>
                         <td className="p-4 text-right">
-                          <Select
-                            value={user.roles[0]}
-                            onValueChange={(value) => handleUserRoleChange(user.id, [value])}
-                          >
-                            <SelectTrigger className="w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {roles.map((role) => (
-                                <SelectItem key={role.id} value={role.name}>
-                                  {role.displayName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex items-center justify-end gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleToggleLockUser(user.id)}
+                                  >
+                                    {(user as any).isLocked ? (
+                                      <Unlock className="h-4 w-4" />
+                                    ) : (
+                                      <Lock className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {(user as any).isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản"}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleEditUser(user)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteUser(user)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       </motion.tr>
                     ))}
@@ -903,6 +995,203 @@ export default function AdminPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Xóa vai trò
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Add User Dialog */}
+      <Dialog open={isAddUserDialogOpen} onOpenChange={setIsAddUserDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Thêm người dùng mới</DialogTitle>
+            <DialogDescription>
+              Tạo tài khoản người dùng mới trong hệ thống
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-user-name">Họ và tên *</Label>
+              <Input
+                id="new-user-name"
+                placeholder="Nguyễn Văn A"
+                value={newUserData.name}
+                onChange={(e) => setNewUserData({ ...newUserData, name: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-user-email">Email *</Label>
+              <Input
+                id="new-user-email"
+                type="email"
+                placeholder="user@example.com"
+                value={newUserData.email}
+                onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-user-password">Mật khẩu *</Label>
+              <Input
+                id="new-user-password"
+                type="password"
+                placeholder="Nhập mật khẩu (tối thiểu 8 ký tự)"
+                value={newUserData.password}
+                onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-user-phone">Số điện thoại</Label>
+              <Input
+                id="new-user-phone"
+                type="tel"
+                placeholder="0901234567"
+                value={newUserData.phone}
+                onChange={(e) => setNewUserData({ ...newUserData, phone: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-user-role">Vai trò *</Label>
+              <Select value={newUserData.role} onValueChange={(value) => setNewUserData({ ...newUserData, role: value })}>
+                <SelectTrigger id="new-user-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.name}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-3 w-3 rounded"
+                          style={{ backgroundColor: role.color }}
+                        />
+                        {role.displayName}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddUserDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleAddUser}>
+              <Plus className="mr-2 h-4 w-4" />
+              Thêm người dùng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa người dùng</DialogTitle>
+            <DialogDescription>
+              Cập nhật thông tin và vai trò của người dùng
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingUser && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-name">Họ và tên</Label>
+                <Input
+                  id="edit-user-name"
+                  value={editingUser.name}
+                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-email">Email</Label>
+                <Input
+                  id="edit-user-email"
+                  type="email"
+                  value={editingUser.email}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-user-role">Vai trò</Label>
+                <Select 
+                  value={editingUser.roles[0]} 
+                  onValueChange={(value) => setEditingUser({ ...editingUser, roles: [value as any] })}
+                >
+                  <SelectTrigger id="edit-user-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.name}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded"
+                            style={{ backgroundColor: role.color }}
+                          />
+                          {role.displayName}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Trạng thái</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="edit-user-locked"
+                    checked={(editingUser as any).isLocked}
+                    onCheckedChange={(checked) => setEditingUser({ ...editingUser, isLocked: checked as boolean })}
+                  />
+                  <Label htmlFor="edit-user-locked" className="font-normal cursor-pointer">
+                    Khóa tài khoản
+                  </Label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditUserDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleSaveEditUser}>
+              <Save className="mr-2 h-4 w-4" />
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation */}
+      <AlertDialog open={isDeleteUserDialogOpen} onOpenChange={setIsDeleteUserDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Xác nhận xóa người dùng
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa người dùng "{userToDelete?.name}"? Tất cả dữ liệu liên quan sẽ bị xóa vĩnh viễn. Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteUser}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Xóa người dùng
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

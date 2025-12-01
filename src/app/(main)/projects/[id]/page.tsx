@@ -29,6 +29,7 @@ import { FilterChips } from "@/components/filters/filter-chips"
 import { SortControl } from "@/components/sorting/sort-control"
 import { mockProjects, mockTasks, mockUsers } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
+import type { SortConfig, TaskSortField } from "@/lib/sorting"
 import Link from "next/link"
 import type { Task } from "@/types"
 import { toast } from "sonner"
@@ -59,12 +60,12 @@ export default function ProjectDetailPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all")
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-  const [sortConfig, setSortConfig] = useState<{ field: string; order: "asc" | "desc" }>({
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
     field: "createdAt",
-    order: "desc",
+    direction: "desc",
   })
   
-  const { filters } = useFilters()
+  const { taskFilters } = useFilters()
 
   if (!project) {
     return (
@@ -231,8 +232,10 @@ export default function ProjectDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Thời gian</p>
                 <p className="font-medium text-sm">
-                  {new Date(project.startDate).toLocaleDateString("vi-VN")} -{" "}
-                  {new Date(project.endDate).toLocaleDateString("vi-VN")}
+                  {project.startDate && new Date(project.startDate).toLocaleDateString("vi-VN")}
+                  {project.startDate && project.endDate && " - "}
+                  {project.endDate && new Date(project.endDate).toLocaleDateString("vi-VN")}
+                  {!project.startDate && !project.endDate && "Chưa xác định"}
                 </p>
               </div>
             </div>
@@ -679,7 +682,7 @@ export default function ProjectDetailPage() {
             {project.members.map((memberId, index) => {
               const member = mockUsers.find((u) => u.id === memberId)
               if (!member) return null
-              const memberTasks = projectTasks.filter((t) => t.assigneeId === memberId)
+              const memberTasks = projectTasks.filter((t) => t.assignees.some((a) => a.id === memberId))
               const completedMemberTasks = memberTasks.filter((t) => t.status === "done").length
 
               return (
@@ -733,7 +736,6 @@ export default function ProjectDetailPage() {
       <TaskCreateModal
         open={isCreateTaskOpen}
         onOpenChange={setIsCreateTaskOpen}
-        projectId={project?.id}
       />
 
       {/* Task Detail Dialog */}
@@ -766,11 +768,11 @@ export default function ProjectDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Ngày bắt đầu</Label>
-                <Input type="date" defaultValue={project.startDate.split('T')[0]} />
+                <Input type="date" defaultValue={project.startDate?.split('T')[0] || ""} />
               </div>
               <div className="space-y-2">
                 <Label>Ngày kết thúc</Label>
-                <Input type="date" defaultValue={project.endDate.split('T')[0]} />
+                <Input type="date" defaultValue={project.endDate?.split('T')[0] || ""} />
               </div>
             </div>
             <div className="space-y-2">

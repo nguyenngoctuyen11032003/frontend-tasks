@@ -76,7 +76,7 @@ export class SortManager {
   /**
    * Sort tasks based on field and direction
    */
-  static sortTasks(tasks: Task[], config: SortConfig<TaskSortField>): Task[] {
+  static sortTasks(tasks: Task[], config: SortConfig): Task[] {
     const sorted = [...tasks]
     const { field, direction } = config
     const multiplier = direction === "asc" ? 1 : -1
@@ -128,7 +128,7 @@ export class SortManager {
   /**
    * Sort projects based on field and direction
    */
-  static sortProjects(projects: Project[], config: SortConfig<ProjectSortField>): Project[] {
+  static sortProjects(projects: Project[], config: SortConfig): Project[] {
     const sorted = [...projects]
     const { field, direction } = config
     const multiplier = direction === "asc" ? 1 : -1
@@ -198,14 +198,14 @@ export class SortManager {
    */
   static saveSortPreference(
     type: "task" | "project",
-    config: SortConfig<TaskSortField> | SortConfig<ProjectSortField>
+    config: SortConfig
   ): void {
     if (typeof window === "undefined") return
 
     try {
       const preference: SavedSortPreference = {
         type,
-        config: config as SortConfig,
+        config,
         updatedAt: new Date().toISOString(),
       }
       localStorage.setItem(`${this.STORAGE_KEY}_${type}`, JSON.stringify(preference))

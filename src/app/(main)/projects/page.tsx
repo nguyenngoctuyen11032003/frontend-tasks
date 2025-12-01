@@ -24,7 +24,7 @@ import { SortControl } from "@/components/sorting/sort-control"
 import { mockProjects, mockTasks, mockUsers } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
 import { FilterManager } from "@/lib/filters"
-import { SortManager, type SortConfig, type ProjectSortField } from "@/lib/sorting"
+import { SortManager, type SortConfig } from "@/lib/sorting"
 import Link from "next/link"
 
 type ViewMode = "grid" | "list"
@@ -34,7 +34,7 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-  const [sortConfig, setSortConfig] = useState<SortConfig<ProjectSortField>>(
+  const [sortConfig, setSortConfig] = useState<SortConfig>(
     SortManager.getSortPreference("project") || SortManager.getDefaultSort("project")
   )
 
@@ -181,7 +181,6 @@ export default function ProjectsPage() {
                     variant={viewMode === "grid" ? "secondary" : "ghost"} 
                     size="sm" 
                     onClick={() => setViewMode("grid")}
-                    aria-label="Chế độ lưới"
                     aria-label="Chế độ lưới"
                   >
                     <Grid3X3 className="h-4 w-4" />

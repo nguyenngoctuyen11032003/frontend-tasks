@@ -260,7 +260,7 @@ export default function ChatPage() {
             {filteredRooms.map((room) => {
               const info = getRoomInfo(room)
               const lastMessage = messages
-                .filter((m) => m.roomId === room.id)
+                .filter((m) => m.chatId === room.id)
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
 
               return (
@@ -293,7 +293,7 @@ export default function ChatPage() {
                         {room.type === "group" && <Hash className="h-3 w-3 text-muted-foreground shrink-0" />}
                         <span className="font-medium truncate text-sm">{info.name}</span>
                         {mutedRooms.has(room.id) && (
-                          <BellOff className="h-3 w-3 text-muted-foreground shrink-0" title="Đã tắt thông báo" />
+                          <BellOff className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Đã tắt thông báo" />
                         )}
                       </div>
                       {lastMessage && (
@@ -302,7 +302,7 @@ export default function ChatPage() {
                     </div>
                     {lastMessage && (
                       <p className="text-sm text-muted-foreground line-clamp-1">
-                        {lastMessage.senderId === currentUserId ? "Bạn: " : ""}
+                        {lastMessage.sender.id === currentUserId ? "Bạn: " : ""}
                         {lastMessage.content}
                       </p>
                     )}

@@ -11,6 +11,7 @@ export interface User {
   role?: string // Job title
   phone?: string
   bio?: string
+  isLocked?: boolean
   createdAt: string
   updatedAt: string
 }

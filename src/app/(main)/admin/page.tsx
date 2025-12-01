@@ -196,8 +196,11 @@ export default function AdminPage() {
       phone: newUserData.phone || undefined,
       role: "Member",
       roles: [newUserData.role as any],
-      avatarUrl: null,
+      avatarUrl: undefined,
       status: "offline",
+      permissions: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
     setUsers((prev) => [...prev, newUser])
     toast.success("Đã thêm người dùng mới", {
@@ -238,7 +241,7 @@ export default function AdminPage() {
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === userId) {
-          const isLocked = (u as any).isLocked
+          const isLocked = u.isLocked
           toast.success(isLocked ? `Đã mở khóa tài khoản` : `Đã khóa tài khoản`)
           return { ...u, isLocked: !isLocked }
         }
@@ -254,6 +257,15 @@ export default function AdminPage() {
       permissions: allSelected
         ? prev.permissions?.filter((p) => !permissions.includes(p))
         : [...new Set([...(prev.permissions || []), ...permissions])],
+    }))
+  }
+
+  const togglePermission = (permission: Permission) => {
+    setEditingRole((prev) => ({
+      ...prev,
+      permissions: prev.permissions?.includes(permission)
+        ? prev.permissions.filter((p) => p !== permission)
+        : [...(prev.permissions || []), permission],
     }))
   }
 
@@ -640,7 +652,7 @@ export default function AdminPage() {
                                     className="h-8 w-8"
                                     onClick={() => handleToggleLockUser(user.id)}
                                   >
-                                    {(user as any).isLocked ? (
+                                    {user.isLocked ? (
                                       <Unlock className="h-4 w-4" />
                                     ) : (
                                       <Lock className="h-4 w-4" />
@@ -648,7 +660,7 @@ export default function AdminPage() {
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  {(user as any).isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản"}
+                                  {user.isLocked ? "Mở khóa tài khoản" : "Khóa tài khoản"}
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -1146,16 +1158,42 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Trạng thái</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="edit-user-locked"
-                    checked={(editingUser as any).isLocked}
-                    onCheckedChange={(checked) => setEditingUser({ ...editingUser, isLocked: checked as boolean })}
-                  />
-                  <Label htmlFor="edit-user-locked" className="font-normal cursor-pointer">
-                    Khóa tài khoản
-                  </Label>
+                <Label>Trạng thái tài khoản</Label>
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {editingUser.isLocked ? (
+                      <Lock className="h-5 w-5 text-red-600" />
+                    ) : (
+                      <Unlock className="h-5 w-5 text-green-600" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium">
+                        {editingUser.isLocked ? "Tài khoản đã khóa" : "Tài khoản hoạt động"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {editingUser.isLocked 
+                          ? "Người dùng không thể đăng nhập" 
+                          : "Người dùng có thể đăng nhập bình thường"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingUser({ ...editingUser, isLocked: !editingUser.isLocked })}
+                  >
+                    {editingUser.isLocked ? (
+                      <>
+                        <Unlock className="mr-2 h-4 w-4" />
+                        Mở khóa
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="mr-2 h-4 w-4" />
+                        Khóa tài khoản
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>

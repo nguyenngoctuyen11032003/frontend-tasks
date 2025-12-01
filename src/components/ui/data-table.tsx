@@ -105,9 +105,29 @@ export function DataTable<T>({
     if (!sortKey || !sortDirection) return 0
     const aVal = (a as Record<string, unknown>)[sortKey]
     const bVal = (b as Record<string, unknown>)[sortKey]
-    if (aVal < bVal) return sortDirection === "asc" ? -1 : 1
-    if (aVal > bVal) return sortDirection === "asc" ? 1 : -1
-    return 0
+    
+    // Handle null/undefined values
+    if (aVal == null && bVal == null) return 0
+    if (aVal == null) return 1
+    if (bVal == null) return -1
+    
+    // Type-safe comparison
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      return sortDirection === "asc" 
+        ? aVal.localeCompare(bVal) 
+        : bVal.localeCompare(aVal)
+    }
+    
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal
+    }
+    
+    // Fallback to string comparison
+    const aStr = String(aVal)
+    const bStr = String(bVal)
+    return sortDirection === "asc" 
+      ? aStr.localeCompare(bStr) 
+      : bStr.localeCompare(aStr)
   })
 
   // Paginate data

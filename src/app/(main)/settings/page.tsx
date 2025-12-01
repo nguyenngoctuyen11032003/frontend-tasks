@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -57,7 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-export default function SettingsPage() {
+function SettingsContent() {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
   const { theme, setTheme } = useTheme()
@@ -767,5 +767,13 @@ export default function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Đang tải...</div>}>
+      <SettingsContent />
+    </Suspense>
   )
 }

@@ -22,6 +22,7 @@ import {
   UserPlus,
   UserMinus,
   Plus,
+  Save,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -60,6 +61,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
   const [isEditingDescription, setIsEditingDescription] = useState(false)
   const [descriptionContent, setDescriptionContent] = useState(task?.description || "")
   const [checklistItems, setChecklistItems] = useState(task?.checklist || [])
+  const [tempChecklistItems, setTempChecklistItems] = useState(task?.checklist || [])
   const [newChecklistItem, setNewChecklistItem] = useState("")
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null)
   const [editingChecklistText, setEditingChecklistText] = useState("")
@@ -93,8 +95,9 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
     })
   }
 
-  const completedChecklist = checklistItems.filter((item) => item.completed).length
-  const totalChecklist = checklistItems.length
+  const displayChecklist = isEditingDescription ? tempChecklistItems : checklistItems
+  const completedChecklist = displayChecklist.filter((item) => item.completed).length
+  const totalChecklist = displayChecklist.length
   const checklistProgress = totalChecklist > 0 ? (completedChecklist / totalChecklist) * 100 : 0
 
   const handleAddChecklistItem = () => {
@@ -104,15 +107,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
       title: newChecklistItem,
       completed: false
     }
-    setChecklistItems([...checklistItems, newItem])
+    setTempChecklistItems([...tempChecklistItems, newItem])
     setNewChecklistItem("")
-    toast.success("Đã thêm mục checklist mới")
   }
 
   const handleToggleChecklistItem = (id: string) => {
-    setChecklistItems(checklistItems.map(item =>
-      item.id === id ? { ...item, completed: !item.completed } : item
-    ))
+    if (isEditingDescription) {
+      setTempChecklistItems(tempChecklistItems.map(item =>
+        item.id === id ? { ...item, completed: !item.completed } : item
+      ))
+    }
   }
 
   const handleStartEditChecklistItem = (id: string, title: string) => {
@@ -122,17 +126,35 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
 
   const handleSaveEditChecklistItem = () => {
     if (!editingChecklistText.trim() || !editingChecklistId) return
-    setChecklistItems(checklistItems.map(item =>
+    setTempChecklistItems(tempChecklistItems.map(item =>
       item.id === editingChecklistId ? { ...item, title: editingChecklistText } : item
     ))
     setEditingChecklistId(null)
     setEditingChecklistText("")
-    toast.success("Đã cập nhật mục checklist")
   }
 
   const handleDeleteChecklistItem = (id: string) => {
-    setChecklistItems(checklistItems.filter(item => item.id !== id))
-    toast.success("Đã xóa mục checklist")
+    setTempChecklistItems(tempChecklistItems.filter(item => item.id !== id))
+  }
+
+  const handleSaveDescriptionAndChecklist = () => {
+    // Save both description and checklist
+    setChecklistItems(tempChecklistItems)
+    setIsEditingDescription(false)
+    toast.success("Đã lưu mô tả và checklist")
+  }
+
+  const handleCancelEdit = () => {
+    setDescriptionContent(task.description)
+    setTempChecklistItems(checklistItems)
+    setIsEditingDescription(false)
+    setNewChecklistItem("")
+    setEditingChecklistId(null)
+  }
+
+  const handleStartEdit = () => {
+    setIsEditingDescription(true)
+    setTempChecklistItems([...checklistItems])
   }
 
   const handleEdit = () => {
@@ -188,10 +210,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          setDescriptionContent(task.description)
-                          setIsEditingDescription(true)
-                        }}
+                        onClick={handleStartEdit}
                       >
                         <Edit className="h-3 w-3 mr-1" />
                         Chỉnh sửa
@@ -199,35 +218,12 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                     )}
                   </div>
                   {isEditingDescription ? (
-                    <div className="space-y-2">
-                      <RichEditor
-                        content={descriptionContent}
-                        onChange={setDescriptionContent}
-                        placeholder="Nhập mô tả công việc..."
-                        users={mockUsers}
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setIsEditingDescription(false)
-                            setDescriptionContent(task.description)
-                          }}
-                        >
-                          Hủy
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            toast.success("Đã cập nhật mô tả")
-                            setIsEditingDescription(false)
-                          }}
-                        >
-                          Lưu
-                        </Button>
-                      </div>
-                    </div>
+                    <RichEditor
+                      content={descriptionContent}
+                      onChange={setDescriptionContent}
+                      placeholder="Nhập mô tả công việc..."
+                      users={mockUsers}
+                    />
                   ) : (
                     <div 
                       className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none"
@@ -251,7 +247,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                     <Progress value={checklistProgress} className="h-2 mb-3" />
                   )}
                   <div className="space-y-2 mb-3">
-                    {checklistItems.map((item) => (
+                    {displayChecklist.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center gap-2 p-2 rounded-lg hover:bg-accent/50 transition-colors group"
@@ -261,8 +257,9 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                           checked={item.completed}
                           onChange={() => handleToggleChecklistItem(item.id)}
                           className="h-4 w-4 rounded cursor-pointer"
+                          disabled={!isEditingDescription}
                         />
-                        {editingChecklistId === item.id ? (
+                        {isEditingDescription && editingChecklistId === item.id ? (
                           <div className="flex-1 flex gap-2">
                             <Input
                               value={editingChecklistText}
@@ -292,49 +289,73 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                             <span className={cn("text-sm flex-1", item.completed && "line-through text-muted-foreground")}>
                               {item.title}
                             </span>
-                            <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6"
-                                onClick={() => handleStartEditChecklistItem(item.id, item.title)}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 text-red-600 hover:text-red-700"
-                                onClick={() => handleDeleteChecklistItem(item.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            {isEditingDescription && (
+                              <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={() => handleStartEditChecklistItem(item.id, item.title)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-red-600 hover:text-red-700"
+                                  onClick={() => handleDeleteChecklistItem(item.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
                     ))}
                   </div>
-                  {/* Add New Checklist Item */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Thêm mục mới..."
-                      value={newChecklistItem}
-                      onChange={(e) => setNewChecklistItem(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleAddChecklistItem()
-                      }}
-                      className="h-9 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleAddChecklistItem}
-                      disabled={!newChecklistItem.trim()}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Thêm
-                    </Button>
-                  </div>
+                  {/* Add New Checklist Item - Only in Edit Mode */}
+                  {isEditingDescription && (
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Thêm mục mới..."
+                          value={newChecklistItem}
+                          onChange={(e) => setNewChecklistItem(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddChecklistItem()
+                          }}
+                          className="h-9 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleAddChecklistItem}
+                          disabled={!newChecklistItem.trim()}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Thêm
+                        </Button>
+                      </div>
+                      
+                      {/* Save/Cancel Buttons for Description + Checklist */}
+                      <div className="flex gap-2 justify-end pt-2 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCancelEdit}
+                        >
+                          Hủy
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveDescriptionAndChecklist}
+                        >
+                          <Save className="h-3 w-3 mr-1" />
+                          Lưu thay đổi
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />

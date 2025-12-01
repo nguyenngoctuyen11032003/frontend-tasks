@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { mockUsers } from "@/mocks/data"
 import type { Project } from "@/types"
 
 interface ProjectCardProps {
@@ -118,12 +119,16 @@ export const ProjectCard = memo(function ProjectCard({ project, onClick, classNa
         {/* Members */}
         <div className="flex items-center gap-2">
           <div className="flex -space-x-2">
-            {project.members.slice(0, 4).map((member) => (
-              <Avatar key={member.id} className="h-7 w-7 border-2 border-card">
-                <AvatarImage src={member.avatar || "/placeholder.svg"} alt={member.name} />
-                <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
-              </Avatar>
-            ))}
+            {project.members.slice(0, 4).map((memberId) => {
+              const member = mockUsers.find(u => u.id === memberId)
+              if (!member) return null
+              return (
+                <Avatar key={memberId} className="h-7 w-7 border-2 border-card">
+                  <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
+                  <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
+                </Avatar>
+              )
+            })}
             {project.members.length > 4 && (
               <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-muted text-xs font-medium">
                 +{project.members.length - 4}

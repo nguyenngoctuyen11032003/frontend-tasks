@@ -16,7 +16,7 @@ import { SortControl } from "@/components/sorting/sort-control"
 import { mockTasks, mockProjects } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
 import { FilterManager } from "@/lib/filters"
-import { SortManager, type SortConfig, type TaskSortField } from "@/lib/sorting"
+import { SortManager, type SortConfig } from "@/lib/sorting"
 import type { Task, TaskStatus } from "@/types"
 import { toast } from "sonner"
 import { useUpdateTaskStatus } from "@/hooks/use-tasks"
@@ -33,7 +33,7 @@ export default function TasksPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
-  const [sortConfig, setSortConfig] = useState<SortConfig<TaskSortField>>(
+  const [sortConfig, setSortConfig] = useState<SortConfig>(
     SortManager.getSortPreference("task") || SortManager.getDefaultSort("task")
   )
 
@@ -103,7 +103,7 @@ export default function TasksPage() {
 
   const handleTaskMove = (taskId: string, newStatus: TaskStatus) => {
     updateTaskStatus.mutate(
-      { taskId, status: newStatus },
+      { id: taskId, status: newStatus },
       {
         onSuccess: () => {
           toast.success("Đã cập nhật trạng thái công việc")

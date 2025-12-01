@@ -294,7 +294,7 @@ export default function ReportsPage() {
                         outerRadius={85}
                         paddingAngle={3}
                         dataKey="value"
-                        label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                        label={({ percent }) => `${((percent || 0) * 100).toFixed(0)}%`}
                       >
                         {tasksByStatusData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
@@ -331,7 +331,7 @@ export default function ReportsPage() {
                         cy="50%"
                         outerRadius={85}
                         dataKey="value"
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                       >
                         {priorityData.map((entry, index) => (
                           <Cell key={`priority-${index}`} fill={entry.color} />
@@ -597,9 +597,8 @@ export default function ReportsPage() {
         open={showExportDialog}
         onOpenChange={setShowExportDialog}
         data={mockTasks}
-        filename="bao-cao-cong-viec"
+        defaultFilename="bao-cao-cong-viec"
         availableFields={exportFields}
-        defaultFields={["title", "status", "priority", "dueDate"]}
       />
     </div>
   )

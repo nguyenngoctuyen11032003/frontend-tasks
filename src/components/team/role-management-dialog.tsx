@@ -204,7 +204,7 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
             <TabsContent value="roles" className="flex-1 mt-4 overflow-hidden">
               <div className="grid grid-cols-3 gap-4 h-full">
                 {/* Roles List */}
-                <div className="col-span-1 border-r pr-4 h-full flex flex-col">
+                <div className="col-span-1 border-r pr-4 flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between mb-4 shrink-0">
                     <h3 className="font-medium text-sm">Vai trò</h3>
                     <Button size="sm" variant="outline" onClick={handleCreateRole}>
@@ -213,9 +213,13 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
                     </Button>
                   </div>
                   <div 
-                    className="flex-1 overflow-y-auto overflow-x-hidden pr-2 scrollbar-visible"
+                    className="flex-1 overflow-y-auto pr-2"
+                    style={{
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: 'hsl(var(--muted-foreground)) transparent'
+                    }}
                   >
-                    <div className="space-y-2 pr-2">
+                    <div className="space-y-2">
                       {roles.map((role) => (
                         <motion.div
                           key={role.id}
@@ -259,10 +263,16 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
                 </div>
 
               {/* Role Details/Edit */}
-              <div className="col-span-2 overflow-hidden flex flex-col h-full">
+              <div className="col-span-2 flex flex-col overflow-hidden">
                 {isEditing || isCreating ? (
-                  <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2 scrollbar-visible">
-                    <div className="space-y-4 pb-4 pr-2">
+                  <div 
+                    className="flex-1 overflow-y-auto pr-2"
+                    style={{
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: 'hsl(var(--muted-foreground)) transparent'
+                    }}
+                  >
+                    <div className="space-y-4 pb-4">
                         <div className="space-y-2">
                           <Label htmlFor="displayName">
                             Tên vai trò <span className="text-destructive">*</span>
@@ -377,8 +387,14 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
                       </div>
                     </div>
                   ) : selectedRole ? (
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2 scrollbar-visible">
-                      <div className="space-y-4 pb-4 pr-2">
+                    <div 
+                      className="flex-1 overflow-y-auto pr-2"
+                      style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: 'hsl(var(--muted-foreground)) transparent'
+                      }}
+                    >
+                      <div className="space-y-4 pb-4">
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -471,8 +487,14 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
             </TabsContent>
 
             <TabsContent value="permissions" className="flex-1 mt-4 overflow-hidden">
-              <div className="h-full overflow-y-auto overflow-x-hidden pr-2 scrollbar-visible">
-                <div className="space-y-4 pb-4 pr-2">
+              <div 
+                className="h-full overflow-y-auto pr-2"
+                style={{
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'hsl(var(--muted-foreground)) transparent'
+                }}
+              >
+                <div className="space-y-4 pb-4">
                   <p className="text-sm text-muted-foreground">
                     Danh sách tất cả các quyền có sẵn trong hệ thống
                   </p>

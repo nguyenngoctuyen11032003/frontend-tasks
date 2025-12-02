@@ -8,7 +8,6 @@ import { Header } from "./header"
 import { Sidebar } from "./sidebar"
 import { MobileNav } from "./mobile-nav"
 import { RightPanel } from "./right-panel"
-import { FloatingChat } from "./floating-chat"
 import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel"
 import { GlobalKeyboardShortcuts } from "./global-keyboard-shortcuts"
 import { SkipLink } from "@/components/ui/skip-link"
@@ -60,7 +59,6 @@ export function AppLayout({ children }: AppLayoutProps) {
         <RightPanel />
       </div>
       <MobileNav />
-      <FloatingChat />
       <KeyboardShortcutsPanel />
       <GlobalKeyboardShortcuts />
     </div>

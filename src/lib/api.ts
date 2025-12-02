@@ -168,6 +168,86 @@ class ApiClient {
     return this.request<User>("/auth/profile")
   }
 
+  async changePassword(oldPassword: string, newPassword: string) {
+    return this.request<{ message: string }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ oldPassword, newPassword }),
+    })
+  }
+
+  // Users
+  async getMe() {
+    return this.request<User>("/users/me")
+  }
+
+  async updateMe(data: { name?: string; phone?: string; bio?: string; department?: string; jobRole?: string }) {
+    return this.request<User>("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateMyAvatar(avatarUrl: string) {
+    return this.request<User>("/users/me/avatar", {
+      method: "PATCH",
+      body: JSON.stringify({ avatarUrl }),
+    })
+  }
+
+  async uploadAvatar(file: File) {
+    const formData = new FormData()
+    formData.append("file", file) // Backend expects 'file' not 'avatar'
+
+    // Make sure token is initialized
+    if (!this.token && typeof window !== 'undefined') {
+      this.initializeToken()
+    }
+
+    const response = await fetch(`${this.baseUrl}/upload/avatar`, {
+      method: "POST",
+      headers: {
+        ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Upload failed" }))
+      throw new Error(error.message || "Failed to upload avatar")
+    }
+
+    const data = await response.json()
+    return data.url as string
+  }
+
+  async getMySettings() {
+    return this.request<{
+      id: string
+      language: string
+      timezone: string
+      dateFormat: string
+      timeFormat: string
+      emailNotifications: boolean
+      pushNotifications: boolean
+      soundEnabled: boolean
+    }>("/users/me/settings")
+  }
+
+  async updateMySettings(settings: {
+    language?: string
+    timezone?: string
+    dateFormat?: string
+    timeFormat?: string
+    emailNotifications?: boolean
+    pushNotifications?: boolean
+    soundEnabled?: boolean
+  }) {
+    return this.request<{ message: string }>("/users/me/settings", {
+      method: "PATCH",
+      body: JSON.stringify(settings),
+    })
+  }
+
   // Projects
   async getProjects() {
     return this.request<Project[]>("/projects")
@@ -350,16 +430,54 @@ class ApiClient {
   }
 
   // Notifications
-  async getNotifications() {
-    return this.request<Notification[]>("/notifications")
+  async getNotifications(params?: {
+    page?: number
+    limit?: number
+    isRead?: boolean
+  }) {
+    const searchParams = new URLSearchParams()
+    if (params?.page) searchParams.set("page", params.page.toString())
+    if (params?.limit) searchParams.set("limit", params.limit.toString())
+    if (params?.isRead !== undefined) searchParams.set("isRead", params.isRead.toString())
+
+    const queryString = searchParams.toString()
+    return this.request<PaginatedResponse<Notification>>(`/notifications${queryString ? `?${queryString}` : ""}`)
+  }
+
+  async getUnreadNotificationCount() {
+    return this.request<number>("/notifications/unread-count")
+  }
+
+  async markNotificationAsRead(id: string) {
+    return this.request<Notification>(`/notifications/${id}/read`, {
+      method: "PATCH",
+    })
+  }
+
+  async markAllNotificationsRead() {
+    return this.request<{ message: string }>("/notifications/read-all", {
+      method: "PATCH",
+    })
   }
 
   async markNotificationRead(id: string) {
     return this.request<void>(`/notifications/${id}/read`, { method: "POST" })
   }
 
-  async markAllNotificationsRead() {
+  async markAllNotificationsRead_OLD() {
     return this.request<void>("/notifications/read-all", { method: "POST" })
+  }
+
+  async deleteNotification(id: string) {
+    return this.request<{ message: string }>(`/notifications/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async deleteAllNotifications() {
+    return this.request<{ message: string }>("/notifications", {
+      method: "DELETE",
+    })
   }
 
   // Reports

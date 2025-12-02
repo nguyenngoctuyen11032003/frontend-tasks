@@ -26,6 +26,7 @@ import {
   Link,
   ExternalLink,
   Zap,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,6 +42,9 @@ import { Badge } from "@/components/ui/badge"
 import { mockUsers } from "@/mocks/data"
 import { useTheme } from "next-themes"
 import { AvatarUploadModal } from "@/components/avatar-upload-modal"
+import { api } from "@/lib/api"
+import type { User as UserType } from "@/types"
+import { useAuthStore } from "@/stores/auth-store"
 import { AvatarUploader } from "@/components/upload"
 import { useCustomTheme } from "@/hooks/use-custom-theme"
 import { ThemeEditorModal } from "@/components/theme-editor-modal"
@@ -61,10 +65,21 @@ function SettingsContent() {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
   const { theme, setTheme } = useTheme()
-  const currentUser = mockUsers[0]
+  const { user: authUser, setUser: setAuthUser } = useAuthStore()
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null)
   const [activeTab, setActiveTab] = useState(tabParam || "profile")
   const [avatarModalOpen, setAvatarModalOpen] = useState(false)
-  const [currentAvatar, setCurrentAvatar] = useState(currentUser.avatarUrl || "")
+  const [currentAvatar, setCurrentAvatar] = useState("")
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileData, setProfileData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    bio: "",
+    department: "",
+    jobRole: "",
+  })
   const [notifications, setNotifications] = useState({
     email: true,
     push: true,
@@ -73,6 +88,21 @@ function SettingsContent() {
     mentions: true,
     weeklyReport: false,
   })
+  const [notificationSettings, setNotificationSettings] = useState({
+    emailNotifications: true,
+    pushNotifications: true,
+    soundEnabled: true,
+  })
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  const [passwordChanging, setPasswordChanging] = useState(false)
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({})
+  const [phoneError, setPhoneError] = useState("")
 
   // Custom theme management
   const { currentTheme, setTheme: setCustomTheme, customThemes, saveTheme, deleteTheme, resetTheme } = useCustomTheme()
@@ -89,6 +119,188 @@ function SettingsContent() {
     }
   }, [tabParam])
 
+  // Load user profile on mount
+  useEffect(() => {
+    loadProfile()
+    loadNotificationSettings()
+  }, [])
+
+  const loadNotificationSettings = async () => {
+    try {
+      setSettingsLoading(true)
+      const settings = await api.getMySettings()
+      setNotificationSettings({
+        emailNotifications: settings.emailNotifications,
+        pushNotifications: settings.pushNotifications,
+        soundEnabled: settings.soundEnabled,
+      })
+    } catch (error: any) {
+      console.error("Failed to load settings:", error)
+      toast.error("Không thể tải cài đặt", {
+        description: error.message || "Sử dụng cài đặt mặc định",
+      })
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  const handleSaveNotificationSettings = async () => {
+    // Validate at least one channel is enabled
+    if (!notificationSettings.emailNotifications && 
+        !notificationSettings.pushNotifications && 
+        !notificationSettings.soundEnabled) {
+      toast.error("Không thể lưu", {
+        description: "Phải bật ít nhất một kênh thông báo",
+      })
+      return
+    }
+
+    try {
+      setSettingsSaving(true)
+      await api.updateMySettings(notificationSettings)
+      toast.success("Cập nhật thành công", {
+        description: "Cài đặt thông báo đã được lưu",
+      })
+      await loadNotificationSettings()
+    } catch (error: any) {
+      console.error("Failed to update settings:", error)
+      toast.error("Không thể cập nhật", {
+        description: error.message || "Vui lòng thử lại sau",
+      })
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
+  const validatePassword = () => {
+    const errors: Record<string, string> = {}
+    
+    if (!passwordData.oldPassword) {
+      errors.oldPassword = "Vui lòng nhập mật khẩu hiện tại"
+    }
+    
+    if (!passwordData.newPassword) {
+      errors.newPassword = "Vui lòng nhập mật khẩu mới"
+    } else if (passwordData.newPassword.length < 6) {
+      errors.newPassword = "Mật khẩu phải có ít nhất 6 ký tự"
+    } else if (passwordData.newPassword === passwordData.oldPassword) {
+      errors.newPassword = "Mật khẩu mới phải khác mật khẩu cũ"
+    }
+    
+    if (!passwordData.confirmPassword) {
+      errors.confirmPassword = "Vui lòng xác nhận mật khẩu"
+    } else if (passwordData.confirmPassword !== passwordData.newPassword) {
+      errors.confirmPassword = "Mật khẩu xác nhận không khớp"
+    }
+    
+    setPasswordErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleChangePassword = async () => {
+    if (!validatePassword()) {
+      return
+    }
+
+    try {
+      setPasswordChanging(true)
+      await api.changePassword(passwordData.oldPassword, passwordData.newPassword)
+      toast.success("Đổi mật khẩu thành công", {
+        description: "Mật khẩu của bạn đã được cập nhật",
+      })
+      setPasswordData({
+        oldPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      })
+      setPasswordErrors({})
+    } catch (error: any) {
+      console.error("Failed to change password:", error)
+      if (error.message.includes("incorrect") || error.message.includes("wrong")) {
+        setPasswordErrors({ oldPassword: "Mật khẩu hiện tại không đúng" })
+      }
+      toast.error("Không thể đổi mật khẩu", {
+        description: error.message || "Vui lòng kiểm tra lại thông tin",
+      })
+    } finally {
+      setPasswordChanging(false)
+    }
+  }
+
+  const loadProfile = async () => {
+    try {
+      setProfileLoading(true)
+      const user = await api.getMe()
+      setCurrentUser(user)
+      setCurrentAvatar(user.avatarUrl || "")
+      setProfileData({
+        name: user.name || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        bio: (user as any).bio || "",
+        department: (user as any).department || "",
+        jobRole: (user as any).jobRole || "",
+      })
+      
+      // Sync with auth store to update header avatar
+      if (authUser) {
+        setAuthUser({ ...authUser, avatarUrl: user.avatarUrl, name: user.name })
+      }
+    } catch (error: any) {
+      console.error("Failed to load profile:", error)
+      toast.error("Không thể tải thông tin", {
+        description: error.message || "Vui lòng thử lại sau",
+      })
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
+  const validatePhone = (phone: string): boolean => {
+    if (!phone) return true // Phone is optional
+    const phoneRegex = /^0\d{9,10}$/
+    return phoneRegex.test(phone)
+  }
+
+  const handleSaveProfile = async () => {
+    // Validate phone if provided
+    if (profileData.phone && !validatePhone(profileData.phone)) {
+      setPhoneError("Số điện thoại không hợp lệ (10-11 số, bắt đầu bằng 0)")
+      toast.error("Thông tin không hợp lệ", {
+        description: "Vui lòng kiểm tra số điện thoại",
+      })
+      return
+    }
+
+    try {
+      setProfileSaving(true)
+      await api.updateMe({
+        name: profileData.name,
+        phone: profileData.phone,
+        bio: profileData.bio,
+        department: profileData.department,
+        jobRole: profileData.jobRole,
+      })
+      
+      // Update auth store with new name
+      if (authUser) {
+        setAuthUser({ ...authUser, name: profileData.name })
+      }
+      
+      toast.success("Cập nhật thành công", {
+        description: "Thông tin cá nhân đã được cập nhật",
+      })
+      await loadProfile() // Reload to get updated data
+    } catch (error: any) {
+      console.error("Failed to update profile:", error)
+      toast.error("Không thể cập nhật", {
+        description: error.message || "Vui lòng thử lại sau",
+      })
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -100,21 +312,29 @@ function SettingsContent() {
 
   const handleAvatarUpload = async (file: File) => {
     try {
-      const formData = new FormData()
-      formData.append("avatar", file)
+      // Upload file to backend
+      const avatarUrl = await api.uploadAvatar(file)
 
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      const avatarUrl = URL.createObjectURL(file)
+      // Update user avatar in database
+      await api.updateMyAvatar(avatarUrl)
       setCurrentAvatar(avatarUrl)
+
+      // Update auth store immediately for instant header update
+      if (authUser) {
+        setAuthUser({ ...authUser, avatarUrl })
+      }
 
       toast.success("Cập nhật thành công", {
         description: "Ảnh đại diện của bạn đã được cập nhật",
       })
 
       setAvatarModalOpen(false)
-    } catch (error) {
+      await loadProfile() // Reload profile to sync everything
+    } catch (error: any) {
       console.error("Avatar upload error:", error)
+      toast.error("Không thể tải ảnh lên", {
+        description: error.message || "Vui lòng thử lại",
+      })
       throw error
     }
   }
@@ -240,173 +460,240 @@ function SettingsContent() {
 
         {/* Profile Tab */}
         <TabsContent value="profile">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Thông tin cá nhân</CardTitle>
-                <CardDescription>Cập nhật thông tin cá nhân của bạn</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <Avatar className="h-20 w-20">
-                      <AvatarImage src={currentAvatar || "/placeholder.svg"} />
-                      <AvatarFallback className="text-xl">{getInitials(currentUser.name)}</AvatarFallback>
-                    </Avatar>
-                    <Button
-                      size="icon"
-                      variant="secondary"
-                      className="absolute bottom-0 right-0 h-8 w-8 rounded-full"
-                      onClick={() => setAvatarModalOpen(true)}
-                      aria-label="Thay đổi ảnh đại diện"
-                    >
-                      <Camera className="h-4 w-4" />
+          {profileLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : !currentUser ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">Không thể tải thông tin người dùng</p>
+                <Button onClick={loadProfile} variant="outline" className="mt-4">
+                  Thử lại
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Thông tin cá nhân</CardTitle>
+                  <CardDescription>Cập nhật thông tin cá nhân của bạn</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <Avatar className="h-20 w-20">
+                        <AvatarImage src={currentAvatar || "/placeholder.svg"} />
+                        <AvatarFallback className="text-xl">{currentUser?.name ? getInitials(currentUser.name) : "?"}</AvatarFallback>
+                      </Avatar>
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        className="absolute bottom-0 right-0 h-8 w-8 rounded-full"
+                        onClick={() => setAvatarModalOpen(true)}
+                        aria-label="Thay đổi ảnh đại diện"
+                      >
+                        <Camera className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{currentUser.name}</h3>
+                      <p className="text-sm text-muted-foreground">{currentUser.email}</p>
+                      <Badge variant="secondary" className="mt-2">
+                        {(currentUser as any).roles?.[0]?.displayName || "Member"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Họ và tên *</Label>
+                      <Input 
+                        id="name" 
+                        value={profileData.name}
+                        onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                        disabled={profileSaving}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input 
+                        id="email" 
+                        type="email" 
+                        value={profileData.email}
+                        disabled
+                        className="bg-muted"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Số điện thoại</Label>
+                      <Input 
+                        id="phone" 
+                        value={profileData.phone}
+                        onChange={(e) => {
+                          setProfileData({ ...profileData, phone: e.target.value })
+                          if (phoneError) setPhoneError("")
+                        }}
+                        placeholder="Nhập số điện thoại..."
+                        disabled={profileSaving}
+                      />
+                      {phoneError && (
+                        <p className="text-sm text-red-600">{phoneError}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Phòng ban</Label>
+                      <Input 
+                        id="department" 
+                        value={profileData.department}
+                        onChange={(e) => setProfileData({ ...profileData, department: e.target.value })}
+                        placeholder="Nhập phòng ban..."
+                        disabled={profileSaving}
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="jobRole">Vai trò công việc</Label>
+                      <Input 
+                        id="jobRole" 
+                        value={profileData.jobRole}
+                        onChange={(e) => setProfileData({ ...profileData, jobRole: e.target.value })}
+                        placeholder="Nhập vai trò..."
+                        disabled={profileSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveProfile} disabled={profileSaving || !profileData.name}>
+                      {profileSaving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Lưu thay đổi
+                        </>
+                      )}
                     </Button>
                   </div>
-                  <div>
-                    <h3 className="font-semibold">{currentUser.name}</h3>
-                    <p className="text-sm text-muted-foreground">{currentUser.email}</p>
-                    <Badge variant="secondary" className="mt-2">
-                      {currentUser.role}
-                    </Badge>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Liên kết tài khoản</CardTitle>
+                  <CardDescription>Kết nối với các dịch vụ khác</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[
+                    { name: "Google", connected: false, icon: Globe },
+                    { name: "GitHub", connected: false, icon: Globe },
+                  ].map((service) => (
+                    <div key={service.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <service.icon className="h-5 w-5" />
+                        <span className="font-medium">{service.name}</span>
+                      </div>
+                      <Button variant={service.connected ? "outline" : "default"} size="sm" disabled>
+                        {service.connected ? "Ngắt kết nối" : "Sắp ra mắt"}
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Notifications Tab */}
+        <TabsContent value="notifications">
+          {settingsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Cài đặt thông báo</CardTitle>
+                <CardDescription>Quản lý cách bạn nhận thông báo</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Kênh thông báo
+                  </h4>
+                  <div className="space-y-4 pl-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Email</p>
+                        <p className="text-sm text-muted-foreground">Nhận thông báo qua email</p>
+                      </div>
+                      <Switch
+                        checked={notificationSettings.emailNotifications}
+                        onCheckedChange={(checked) => 
+                          setNotificationSettings({ ...notificationSettings, emailNotifications: checked })
+                        }
+                        disabled={settingsSaving}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Push notification</p>
+                        <p className="text-sm text-muted-foreground">Nhận thông báo đẩy trên trình duyệt</p>
+                      </div>
+                      <Switch
+                        checked={notificationSettings.pushNotifications}
+                        onCheckedChange={(checked) => 
+                          setNotificationSettings({ ...notificationSettings, pushNotifications: checked })
+                        }
+                        disabled={settingsSaving}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Âm thanh</p>
+                        <p className="text-sm text-muted-foreground">Phát âm thanh khi có thông báo mới</p>
+                      </div>
+                      <Switch
+                        checked={notificationSettings.soundEnabled}
+                        onCheckedChange={(checked) => 
+                          setNotificationSettings({ ...notificationSettings, soundEnabled: checked })
+                        }
+                        disabled={settingsSaving}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <Separator />
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Họ và tên</Label>
-                    <Input id="name" defaultValue={currentUser.name} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" defaultValue={currentUser.email} />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="phone">Số điện thoại</Label>
-                    <Input id="phone" placeholder="Nhập số điện thoại..." />
-                  </div>
-                </div>
-
-
-
                 <div className="flex justify-end">
-                  <Button>
-                    <Save className="mr-2 h-4 w-4" />
-                    Lưu thay đổi
+                  <Button 
+                    onClick={handleSaveNotificationSettings} 
+                    disabled={settingsSaving}
+                  >
+                    {settingsSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Lưu cài đặt
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Liên kết tài khoản</CardTitle>
-                <CardDescription>Kết nối với các dịch vụ khác</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  { name: "Google", connected: true, icon: Globe },
-                  { name: "GitHub", connected: false, icon: Globe },
-                ].map((service) => (
-                  <div key={service.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <service.icon className="h-5 w-5" />
-                      <span className="font-medium">{service.name}</span>
-                    </div>
-                    <Button variant={service.connected ? "outline" : "default"} size="sm">
-                      {service.connected ? "Ngắt kết nối" : "Kết nối"}
-                    </Button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cài đặt thông báo</CardTitle>
-              <CardDescription>Quản lý cách bạn nhận thông báo</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  Kênh thông báo
-                </h4>
-                <div className="space-y-4 pl-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Email</p>
-                      <p className="text-sm text-muted-foreground">Nhận thông báo qua email</p>
-                    </div>
-                    <Switch
-                      checked={notifications.email}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, email: checked })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Push notification</p>
-                      <p className="text-sm text-muted-foreground">Nhận thông báo đẩy trên trình duyệt</p>
-                    </div>
-                    <Switch
-                      checked={notifications.push}
-                      onCheckedChange={(checked) => setNotifications({ ...notifications, push: checked })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Bell className="h-4 w-4" />
-                  Loại thông báo
-                </h4>
-                <div className="space-y-4 pl-6">
-                  {[
-                    {
-                      key: "taskAssigned",
-                      title: "Được giao công việc",
-                      desc: "Khi có công việc mới được giao cho bạn",
-                    },
-                    {
-                      key: "taskCompleted",
-                      title: "Công việc hoàn thành",
-                      desc: "Khi công việc bạn theo dõi được hoàn thành",
-                    },
-                    {
-                      key: "mentions",
-                      title: "Được nhắc đến",
-                      desc: "Khi ai đó nhắc đến bạn trong bình luận",
-                    },
-                    {
-                      key: "weeklyReport",
-                      title: "Báo cáo tuần",
-                      desc: "Nhận báo cáo tổng hợp hàng tuần",
-                    },
-                  ].map((item) => (
-                    <div key={item.key} className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{item.title}</p>
-                        <p className="text-sm text-muted-foreground">{item.desc}</p>
-                      </div>
-                      <Switch
-                        checked={notifications[item.key as keyof typeof notifications]}
-                        onCheckedChange={(checked) => setNotifications({ ...notifications, [item.key]: checked })}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          )}
         </TabsContent>
 
         {/* Security Tab */}
@@ -419,20 +706,92 @@ function SettingsContent() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="current-password">Mật khẩu hiện tại</Label>
-                  <Input id="current-password" type="password" />
+                  <Label htmlFor="current-password">Mật khẩu hiện tại *</Label>
+                  <Input 
+                    id="current-password" 
+                    type="password"
+                    value={passwordData.oldPassword}
+                    onChange={(e) => {
+                      setPasswordData({ ...passwordData, oldPassword: e.target.value })
+                      if (passwordErrors.oldPassword) {
+                        setPasswordErrors({ ...passwordErrors, oldPassword: "" })
+                      }
+                    }}
+                    disabled={passwordChanging}
+                  />
+                  {passwordErrors.oldPassword && (
+                    <p className="text-sm text-red-600">{passwordErrors.oldPassword}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="new-password">Mật khẩu mới</Label>
-                  <Input id="new-password" type="password" />
+                  <Label htmlFor="new-password">Mật khẩu mới *</Label>
+                  <Input 
+                    id="new-password" 
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={(e) => {
+                      setPasswordData({ ...passwordData, newPassword: e.target.value })
+                      if (passwordErrors.newPassword) {
+                        setPasswordErrors({ ...passwordErrors, newPassword: "" })
+                      }
+                    }}
+                    disabled={passwordChanging}
+                  />
+                  {passwordErrors.newPassword && (
+                    <p className="text-sm text-red-600">{passwordErrors.newPassword}</p>
+                  )}
+                  {passwordData.newPassword && !passwordErrors.newPassword && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className={`h-1 flex-1 rounded-full ${
+                          passwordData.newPassword.length < 6 ? 'bg-red-300' :
+                          passwordData.newPassword.length < 10 ? 'bg-yellow-300' :
+                          'bg-green-300'
+                        }`} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Độ mạnh: {
+                          passwordData.newPassword.length < 6 ? 'Yếu' :
+                          passwordData.newPassword.length < 10 ? 'Trung bình' :
+                          'Mạnh'
+                        }
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Xác nhận mật khẩu mới</Label>
-                  <Input id="confirm-password" type="password" />
+                  <Label htmlFor="confirm-password">Xác nhận mật khẩu mới *</Label>
+                  <Input 
+                    id="confirm-password" 
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => {
+                      setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                      if (passwordErrors.confirmPassword) {
+                        setPasswordErrors({ ...passwordErrors, confirmPassword: "" })
+                      }
+                    }}
+                    disabled={passwordChanging}
+                  />
+                  {passwordErrors.confirmPassword && (
+                    <p className="text-sm text-red-600">{passwordErrors.confirmPassword}</p>
+                  )}
                 </div>
-                <Button>
-                  <Key className="mr-2 h-4 w-4" />
-                  Đổi mật khẩu
+                <Button 
+                  onClick={handleChangePassword}
+                  disabled={passwordChanging || !passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+                >
+                  {passwordChanging ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    <>
+                      <Key className="mr-2 h-4 w-4" />
+                      Đổi mật khẩu
+                    </>
+                  )}
                 </Button>
               </CardContent>
             </Card>

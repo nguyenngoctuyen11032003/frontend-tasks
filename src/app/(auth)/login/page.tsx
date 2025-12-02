@@ -13,11 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuthStore } from "@/stores/auth-store"
-import { currentUser } from "@/mocks/data"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { isLoading } = useAuthStore()
+  const { login, isLoading } = useAuthStore()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -51,23 +50,34 @@ export default function LoginPage() {
 
     setIsSubmitting(true)
 
-    // Mock login - simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    try {
+      // Call real API through auth store
+      await login(email, password)
+      
+      toast.success("Đăng nhập thành công!", {
+        description: `Chào mừng bạn quay trở lại`,
+      })
 
-    // Mock successful login
-    useAuthStore.setState({
-      user: currentUser,
-      token: "mock-jwt-token",
-      isAuthenticated: true,
-      isLoading: false,
-    })
-
-    toast.success("Đăng nhập thành công!", {
-      description: `Chào mừng ${currentUser.name} quay trở lại`,
-    })
-
-    setIsSubmitting(false)
-    router.push("/dashboard")
+      router.push("/dashboard")
+    } catch (error: any) {
+      // Check if account is locked
+      const errorMessage = error.message || "Email hoặc mật khẩu không đúng"
+      const isLocked = errorMessage.toLowerCase().includes("khóa") || 
+                       errorMessage.toLowerCase().includes("locked")
+      
+      if (isLocked) {
+        toast.error("🔒 Tài khoản bị khóa", {
+          description: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
+          duration: 5000,
+        })
+      } else {
+        toast.error("Đăng nhập thất bại", {
+          description: errorMessage,
+        })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (

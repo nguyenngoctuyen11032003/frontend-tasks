@@ -8,7 +8,8 @@ export interface User {
   permissions: Permission[]
   status: "online" | "offline" | "away"
   department?: string
-  role?: string // Job title
+  role?: string // Job title (for display)
+  jobRole?: string // Job role (backend field)
   phone?: string
   bio?: string
   isLocked?: boolean
@@ -141,6 +142,104 @@ export interface AuthState {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
+}
+
+// ==================== ADMIN ====================
+export interface SystemSetting {
+  id: string
+  key: string
+  value: string
+  description?: string
+  isPublic: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ActivityLog {
+  id: string
+  userId: string
+  user: User
+  action: string
+  entityType: string
+  entityId?: string
+  metadata?: Record<string, any>
+  ipAddress?: string
+  userAgent?: string
+  projectId?: string
+  project?: Project
+  createdAt: string
+}
+
+export interface ActivityLogQuery {
+  userId?: string
+  action?: string
+  entityType?: string
+  startDate?: string
+  endDate?: string
+  page?: number
+  limit?: number
+}
+
+export interface DashboardStats {
+  users: {
+    total: number
+    active: number
+    inactive: number
+  }
+  projects: {
+    total: number
+    active: number
+    archived: number
+  }
+  tasks: {
+    total: number
+    completed: number
+    pending: number
+    overdue: number
+  }
+  content: {
+    notes: number
+    chats: number
+  }
+  notifications: {
+    total: number
+    unread: number
+  }
+}
+
+export interface UserActivityStat {
+  date: string
+  count: number
+}
+
+export interface TopUser {
+  userId: string
+  fullName: string
+  email: string
+  activityCount: number
+}
+
+export interface SystemHealth {
+  status: 'healthy' | 'unhealthy'
+  database: {
+    connected: boolean
+  }
+  server: {
+    uptime: number
+    memoryUsage: {
+      rss: number
+      heapTotal: number
+      heapUsed: number
+      external: number
+    }
+  }
+  timestamp: string
+}
+
+export interface DatabaseCleanupResult {
+  deletedActivityLogs: number
+  deletedSessions: number
+  deletedNotifications: number
 }
 
 // ==================== PROJECT ====================

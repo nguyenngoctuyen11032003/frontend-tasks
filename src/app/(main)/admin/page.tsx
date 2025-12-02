@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import React from "react"
 import {
@@ -23,6 +23,7 @@ import {
   UserCheck,
   Lock,
   Unlock,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,15 +57,34 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { mockUsers, mockRoleDefinitions } from "@/mocks/data"
 import { PERMISSION_GROUPS, PERMISSION_LABELS, type Permission, type RoleDefinition, type User } from "@/types"
 import { usePermission } from "@/hooks/use-permission"
+import { useRolesStore } from "@/stores/roles-store"
+import { useAdminStore } from "@/stores/admin-store"
+import api from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export default function AdminPage() {
   const { can, isSuperAdmin, isAdmin } = usePermission()
-  const [roles, setRoles] = useState<RoleDefinition[]>(mockRoleDefinitions)
-  const [users, setUsers] = useState<User[]>(mockUsers)
+  const { roles, isLoading: rolesLoading, fetchRoles, createRole, updateRole, deleteRole } = useRolesStore()
+  const { 
+    dashboardStats, 
+    statsLoading, 
+    fetchDashboardStats,
+    systemSettings,
+    settingsLoading,
+    fetchSystemSettings,
+    updateSystemSetting,
+    activityLogs,
+    logsLoading,
+    fetchActivityLogs,
+    clearActivityLogs,
+    systemHealth,
+    healthLoading,
+    fetchSystemHealth,
+  } = useAdminStore()
+  const [users, setUsers] = useState<User[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRole, setSelectedRole] = useState<RoleDefinition | null>(null)
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
@@ -77,10 +97,114 @@ export default function AdminPage() {
   const [inviteRole, setInviteRole] = useState<string>("member")
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [isSettingDialogOpen, setIsSettingDialogOpen] = useState(false)
+  const [editingSetting, setEditingSetting] = useState<{ key: string; value: string; description: string } | null>(null)
   const [isDeleteUserDialogOpen, setIsDeleteUserDialogOpen] = useState(false)
   const [userToDelete, setUserToDelete] = useState<User | null>(null)
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false)
   const [newUserData, setNewUserData] = useState({ name: "", email: "", password: "", phone: "", role: "member" })
+  const [logsFilter, setLogsFilter] = useState({ action: "", entityType: "", search: "" })
+  const [isClearLogsDialogOpen, setIsClearLogsDialogOpen] = useState(false)
+
+  // Permission check - show warning if user doesn't have admin access
+  useEffect(() => {
+    console.log('🔐 Permission check:', {
+      isSuperAdmin: isSuperAdmin(),
+      isAdmin: isAdmin(),
+      canViewSettings: can('settings.view'),
+      canManageSettings: can('settings.manage'),
+      canManageUsers: can('users.manage'),
+    })
+
+    if (!isAdmin() && !isSuperAdmin()) {
+      toast.error('Bạn không có quyền truy cập trang này', {
+        description: 'Chỉ Super Admin và Admin mới có thể truy cập trang Quản trị hệ thống'
+      })
+    }
+  }, [can, isSuperAdmin, isAdmin])
+  
+  // Fetch data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Fetch roles, dashboard stats, settings, activity logs, and users in parallel
+        await Promise.all([
+          fetchRoles(),
+          fetchDashboardStats(),
+          fetchSystemSettings(),
+          fetchActivityLogs({ page: 1, limit: 10 }),
+          fetchSystemHealth(),
+        ])
+        
+        // Fetch users
+        setUsersLoading(true)
+        console.log('👥 Fetching users from API...')
+        const usersData = await api.getUsers()
+        console.log('✅ Users fetched:', usersData)
+        console.log('📊 Users count:', usersData?.length || 0)
+        setUsers(usersData)
+      } catch (error: any) {
+        console.error('❌ Failed to fetch data:', error)
+        toast.error("Không thể tải dữ liệu", {
+          description: error.message
+        })
+      } finally {
+        setUsersLoading(false)
+      }
+    }
+    loadData()
+  }, [fetchRoles, fetchDashboardStats, fetchSystemSettings, fetchActivityLogs, fetchSystemHealth])
+
+  // Auto-refresh system health every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSystemHealth()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [fetchSystemHealth])
+
+  // Debug: Log roles to check displayName
+  useEffect(() => {
+    if (roles.length > 0) {
+      console.log('📋 Roles data:', roles.map((r, idx) => ({ 
+        index: idx,
+        id: r?.id,
+        name: r?.name, 
+        displayName: r?.displayName,
+        hasDisplayName: !!r?.displayName,
+        hasName: !!r?.name,
+        isValid: !!(r?.name || r?.displayName)
+      })))
+      
+      // Log invalid roles as warning only (not error)
+      const invalidRoles = roles.filter(r => !r?.name && !r?.displayName)
+      if (invalidRoles.length > 0) {
+        console.warn('⚠️ Invalid roles detected (will be filtered):', invalidRoles)
+      }
+    }
+  }, [roles])
+
+  // Helper function to get display name with fallback
+  const getRoleDisplayName = (role: RoleDefinition) => {
+    // Return displayName if exists
+    if (role?.displayName) return role.displayName
+    
+    // Return name if no displayName
+    if (!role?.name) return 'Unknown Role'
+    
+    // Fallback: Format name to title case
+    return role.name
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+  }
+
+  // Helper function to get role initial
+  const getRoleInitial = (role: RoleDefinition) => {
+    if (!role) return 'R'
+    const displayName = getRoleDisplayName(role)
+    return displayName.charAt(0).toUpperCase()
+  }
 
   const getInitials = (name: string) => {
     return name
@@ -91,11 +215,83 @@ export default function AdminPage() {
       .slice(0, 2)
   }
 
-  const filteredUsers = users.filter(
+  // Translate setting keys and descriptions to Vietnamese
+  const translateSetting = (key: string, description?: string) => {
+    const translations: Record<string, { label: string; description: string }> = {
+      "app.email_verification_required": {
+        label: "Yêu cầu xác thực email",
+        description: "Bật để yêu cầu người dùng xác thực email trước khi sử dụng"
+      },
+      "app.registration_enabled": {
+        label: "Cho phép đăng ký mới",
+        description: "Bật để cho phép người dùng tự đăng ký tài khoản"
+      },
+      "email.enabled": {
+        label: "Bật gửi email",
+        description: "Bật/tắt tính năng gửi email thông báo"
+      },
+      "file.max_upload_size": {
+        label: "Kích thước file tối đa",
+        description: "Kích thước tối đa cho mỗi file upload (bytes)"
+      },
+      "file.max_attachments_per_task": {
+        label: "Số file tối đa mỗi công việc",
+        description: "Giới hạn số lượng file đính kèm cho mỗi công việc"
+      },
+      "max.upload.size": {
+        label: "Kích thước upload tối đa",
+        description: "Kích thước tối đa cho mỗi lần upload (bytes)"
+      },
+      "session.timeout_minutes": {
+        label: "Thời gian hết hạn phiên",
+        description: "Thời gian tự động đăng xuất khi không hoạt động (phút)"
+      },
+      "task.max_per_user": {
+        label: "Số công việc tối đa mỗi người",
+        description: "Giới hạn số lượng công việc mỗi người dùng có thể tạo"
+      }
+    }
+    return translations[key] || { label: key, description: description || "" }
+  }
+
+  // Check if setting is boolean toggle type
+  const isBooleanSetting = (key: string) => {
+    return ["app.email_verification_required", "app.registration_enabled", "email.enabled"].includes(key)
+  }
+
+  // Handle toggle switch change
+  const handleToggleSetting = async (setting: typeof systemSettings[0]) => {
+    try {
+      const newValue = setting.value === "true" ? "false" : "true"
+      await updateSystemSetting(setting.key, {
+        value: newValue,
+        description: setting.description,
+      })
+      toast.success("Đã cập nhật cài đặt")
+    } catch (error: any) {
+      toast.error("Không thể cập nhật cài đặt", { description: error.message })
+    }
+  }
+
+  // Filter valid roles only
+  const validRoles = Array.isArray(roles) ? roles.filter(r => r && (r.name || r.displayName)) : []
+
+  const filteredUsers = Array.isArray(users) ? users.filter(
     (user) =>
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  ) : []
+
+  // Debug: Log users state
+  useEffect(() => {
+    console.log('👥 Users state updated:', {
+      usersArray: users,
+      usersCount: users?.length || 0,
+      isArray: Array.isArray(users),
+      filteredCount: filteredUsers.length,
+      searchQuery
+    })
+  }, [users, filteredUsers, searchQuery])
 
   const toggleGroup = (groupKey: string) => {
     setExpandedGroups((prev) => (prev.includes(groupKey) ? prev.filter((g) => g !== groupKey) : [...prev, groupKey]))
@@ -115,6 +311,7 @@ export default function AdminPage() {
   }
 
   const handleEditRole = (role: RoleDefinition) => {
+    // Allow editing system roles but with restrictions (only permissions)
     setEditingRole({ ...role })
     setSelectedRole(role)
     setIsRoleDialogOpen(true)
@@ -129,98 +326,239 @@ export default function AdminPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  const confirmDeleteRole = () => {
+  const confirmDeleteRole = async () => {
     if (roleToDelete) {
-      setRoles((prev) => prev.filter((r) => r.id !== roleToDelete.id))
-      toast.success(`Đã xóa vai trò "${roleToDelete.displayName}"`)
+      try {
+        await deleteRole(roleToDelete.id)
+        toast.success(`Đã xóa vai trò "${roleToDelete.displayName}"`)
+        setIsDeleteDialogOpen(false)
+        setRoleToDelete(null)
+      } catch (error: any) {
+        toast.error(error.message || "Không thể xóa vai trò")
+        setIsDeleteDialogOpen(false)
+        setRoleToDelete(null)
+      }
+    } else {
+      setIsDeleteDialogOpen(false)
+      setRoleToDelete(null)
     }
-    setIsDeleteDialogOpen(false)
-    setRoleToDelete(null)
   }
 
-  const handleSaveRole = () => {
+  const handleSaveRole = async () => {
     if (!editingRole.name || !editingRole.displayName) {
       toast.error("Vui lòng điền đầy đủ thông tin")
       return
     }
 
-    if (selectedRole) {
-      // Update existing role
-      setRoles((prev) =>
-        prev.map((r) => (r.id === selectedRole.id ? { ...r, ...editingRole, updatedAt: new Date().toISOString() } : r)),
-      )
-      toast.success(`Đã cập nhật vai trò "${editingRole.displayName}"`)
-    } else {
-      // Create new role
-      const newRole: RoleDefinition = {
-        id: `role-${Date.now()}`,
-        name: editingRole.name?.toLowerCase().replace(/\s+/g, "_") || "",
-        displayName: editingRole.displayName || "",
-        description: editingRole.description || "",
-        permissions: editingRole.permissions || [],
-        isSystem: false,
-        color: editingRole.color || "#3b82f6",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    try {
+      if (selectedRole) {
+        // Update existing role
+        // For system roles, only update permissions, not name/displayName
+        const updateData: any = {
+          description: editingRole.description,
+          color: editingRole.color,
+          permissions: editingRole.permissions?.map(String),
+        }
+        
+        // Only allow name/displayName changes for non-system roles
+        if (!selectedRole.isSystem) {
+          updateData.name = editingRole.name
+          updateData.displayName = editingRole.displayName
+        }
+        
+        await updateRole(selectedRole.id, updateData)
+        toast.success(`Đã cập nhật vai trò "${editingRole.displayName}"`)
+      } else {
+        // Create new role
+        await createRole({
+          name: editingRole.name?.toLowerCase().replace(/\s+/g, "_") || "",
+          displayName: editingRole.displayName || "",
+          description: editingRole.description,
+          color: editingRole.color || "#3b82f6",
+          permissions: editingRole.permissions?.map(String) || [],
+        })
+        toast.success(`Đã tạo vai trò "${editingRole.displayName}"`)
       }
-      setRoles((prev) => [...prev, newRole])
-      toast.success(`Đã tạo vai trò "${newRole.displayName}"`)
+      setIsRoleDialogOpen(false)
+      setEditingRole({})
+      setSelectedRole(null)
+    } catch (error: any) {
+      toast.error(error.message || "Không thể lưu vai trò")
     }
-    setIsRoleDialogOpen(false)
   }
 
-  const handleSendInvitation = () => {
+  const handleSendInvitation = async () => {
     if (!inviteEmail || !inviteRole) {
       toast.error("Vui lòng điền đầy đủ thông tin")
       return
     }
 
-    // Simulate sending invitation
-    toast.success(`Đã gửi lời mời đến ${inviteEmail}`, {
-      description: `Vai trò: ${roles.find((r) => r.name === inviteRole)?.displayName}`,
-    })
-    setIsInviteDialogOpen(false)
-    setInviteEmail("")
-    setInviteRole("member")
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(inviteEmail)) {
+      toast.error("Email không hợp lệ")
+      return
+    }
+
+    try {
+      setUsersLoading(true)
+      // Find role ID from role name
+      const selectedRole = roles.find(r => r.name === inviteRole)
+      const roleIds = selectedRole ? [selectedRole.id] : []
+
+      await api.inviteUser(inviteEmail, roleIds)
+
+      toast.success(`📧 Đã gửi lời mời thành công!`, {
+        description: `Email mời đã được gửi đến ${inviteEmail} với vai trò ${roles.find((r) => r.name === inviteRole)?.displayName}`,
+      })
+
+      setIsInviteDialogOpen(false)
+      setInviteEmail("")
+      setInviteRole("member")
+    } catch (error: any) {
+      // Check if error is about pending invitation
+      if (error.message?.includes('pending invitation') || error.message?.includes('already exists')) {
+        toast.success(`📧 Đã gửi lại lời mời!`, {
+          description: `Email mời đã được gửi lại đến ${inviteEmail}`,
+        })
+        setIsInviteDialogOpen(false)
+        setInviteEmail("")
+        setInviteRole("member")
+      } else {
+        toast.error("Không thể gửi lời mời", {
+          description: error.message
+        })
+      }
+    } finally {
+      setUsersLoading(false)
+    }
   }
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUserData.name || !newUserData.email || !newUserData.password) {
       toast.error("Vui lòng điền đầy đủ thông tin bắt buộc")
       return
     }
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      name: newUserData.name,
-      email: newUserData.email,
-      phone: newUserData.phone || undefined,
-      role: "Member",
-      roles: [newUserData.role as any],
-      avatarUrl: undefined,
-      status: "offline",
-      permissions: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+
+    try {
+      setUsersLoading(true)
+      // Find role ID from role name
+      console.log('🔍 Looking for role:', newUserData.role)
+      console.log('📋 Available roles:', roles)
+      
+      const selectedRole = roles.find(r => r.name === newUserData.role)
+      console.log('✅ Found role:', selectedRole)
+      
+      const roleIds = selectedRole ? [selectedRole.id] : []
+      console.log('🎯 RoleIds to send:', roleIds)
+
+      const userData = {
+        name: newUserData.name,
+        email: newUserData.email,
+        password: newUserData.password,
+        phone: newUserData.phone || undefined,
+        roleIds
+      }
+      console.log('📤 Sending user data:', userData)
+
+      const newUser = await api.createUser(userData)
+      console.log('✅ User created:', newUser)
+
+      toast.success("🎉 Đã tạo tài khoản thành công!", {
+        description: `Email với thông tin đăng nhập đã được gửi đến ${newUserData.email}`
+      })
+
+      // Refresh users list
+      const usersData = await api.getUsers()
+      setUsers(usersData)
+
+      setIsAddUserDialogOpen(false)
+      setNewUserData({ name: "", email: "", password: "", phone: "", role: "member" })
+    } catch (error: any) {
+      console.error('❌ Error creating user:', error)
+      toast.error("Không thể thêm người dùng", {
+        description: error.message
+      })
+    } finally {
+      setUsersLoading(false)
     }
-    setUsers((prev) => [...prev, newUser])
-    toast.success("Đã thêm người dùng mới", {
-      description: `Email: ${newUserData.email}`
-    })
-    setIsAddUserDialogOpen(false)
-    setNewUserData({ name: "", email: "", password: "", phone: "", role: "member" })
   }
 
   const handleEditUser = (user: User) => {
-    setEditingUser(user)
+    // Store original lock status to detect changes
+    const userWithOriginal = {
+      ...user,
+      _originalIsLocked: user.isLocked
+    }
+    setEditingUser(userWithOriginal as any)
     setIsEditUserDialogOpen(true)
   }
 
-  const handleSaveEditUser = () => {
+  const handleSaveEditUser = async () => {
     if (!editingUser) return
-    setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? editingUser : u)))
-    toast.success("Đã cập nhật thông tin người dùng")
-    setIsEditUserDialogOpen(false)
-    setEditingUser(null)
+
+    try {
+      setUsersLoading(true)
+
+      // Get current role name from user's roles array
+      const currentRoleName = Array.isArray(editingUser.roles) && editingUser.roles.length > 0 
+        ? (typeof editingUser.roles[0] === 'string' 
+            ? editingUser.roles[0] 
+            : (editingUser.roles[0] as any)?.name)
+        : null
+
+      console.log('🔍 Current role name:', currentRoleName)
+      console.log('📋 Available roles:', roles)
+
+      // Convert role name to roleIds
+      const selectedRole = currentRoleName ? roles.find(r => r.name === currentRoleName) : null
+      const roleIds = selectedRole ? [selectedRole.id] : undefined
+
+      console.log('✅ Found role:', selectedRole)
+      console.log('🎯 RoleIds to send:', roleIds)
+
+      const updateData = {
+        name: editingUser.name,
+        email: editingUser.email,
+        phone: editingUser.phone,
+        department: editingUser.department,
+        jobRole: editingUser.jobRole,
+        roleIds: roleIds,
+      }
+
+      console.log('📤 Sending update data:', updateData)
+
+      // Update user info
+      await api.updateUser(editingUser.id, updateData)
+
+      // Handle lock/unlock if status changed
+      const originalLocked = (editingUser as any)._originalIsLocked
+      if (originalLocked !== editingUser.isLocked) {
+        if (editingUser.isLocked) {
+          await api.lockUser(editingUser.id)
+          toast.success("Đã khóa tài khoản", { description: editingUser.name })
+        } else {
+          await api.unlockUser(editingUser.id)
+          toast.success("Đã mở khóa tài khoản", { description: editingUser.name })
+        }
+      }
+
+      toast.success("Đã cập nhật thông tin người dùng")
+
+      // Refresh users list
+      const usersData = await api.getUsers()
+      setUsers(usersData)
+
+      setIsEditUserDialogOpen(false)
+      setEditingUser(null)
+    } catch (error: any) {
+      console.error('❌ Error updating user:', error)
+      toast.error("Không thể cập nhật người dùng", {
+        description: error.message
+      })
+    } finally {
+      setUsersLoading(false)
+    }
   }
 
   const handleDeleteUser = (user: User) => {
@@ -228,13 +566,29 @@ export default function AdminPage() {
     setIsDeleteUserDialogOpen(true)
   }
 
-  const confirmDeleteUser = () => {
-    if (userToDelete) {
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id))
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
+
+    try {
+      setUsersLoading(true)
+      await api.deleteUser(userToDelete.id)
       toast.success(`Đã xóa người dùng "${userToDelete.name}"`)
+
+      // Refresh users list
+      const usersData = await api.getUsers()
+      setUsers(usersData)
+
+      setIsDeleteUserDialogOpen(false)
+      setUserToDelete(null)
+    } catch (error: any) {
+      toast.error("Không thể xóa người dùng", {
+        description: error.message
+      })
+      setIsDeleteUserDialogOpen(false)
+      setUserToDelete(null)
+    } finally {
+      setUsersLoading(false)
     }
-    setIsDeleteUserDialogOpen(false)
-    setUserToDelete(null)
   }
 
   const handleToggleLockUser = (userId: string) => {
@@ -274,6 +628,72 @@ export default function AdminPage() {
     toast.success("Đã cập nhật vai trò người dùng")
   }
 
+  const handleEditSetting = (setting: typeof systemSettings[0]) => {
+    setEditingSetting({
+      key: setting.key,
+      value: setting.value,
+      description: setting.description || "",
+    })
+    setIsSettingDialogOpen(true)
+  }
+
+  const handleSaveSetting = async () => {
+    if (!editingSetting) return
+
+    try {
+      await updateSystemSetting(editingSetting.key, {
+        value: editingSetting.value,
+        description: editingSetting.description,
+      })
+      setIsSettingDialogOpen(false)
+      setEditingSetting(null)
+    } catch (error) {
+      // Error handled by store
+    }
+  }
+
+  const handleLockUser = async (userId: string) => {
+    try {
+      await api.lockUser(userId)
+      toast.success("Đã khóa tài khoản người dùng")
+      // Refresh users list
+      const usersData = await api.getUsers()
+      setUsers(usersData)
+    } catch (error: any) {
+      toast.error("Không thể khóa tài khoản", { description: error.message })
+    }
+  }
+
+  const handleUnlockUser = async (userId: string) => {
+    try {
+      await api.unlockUser(userId)
+      toast.success("Đã mở khóa tài khoản người dùng")
+      // Refresh users list
+      const usersData = await api.getUsers()
+      setUsers(usersData)
+    } catch (error: any) {
+      toast.error("Không thể mở khóa tài khoản", { description: error.message })
+    }
+  }
+
+  const handleClearLogs = async () => {
+    try {
+      await clearActivityLogs(90)
+      setIsClearLogsDialogOpen(false)
+    } catch (error) {
+      // Error handled by store
+    }
+  }
+
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    if (days > 0) return `${days}d ${hours}h`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
+  }
+
   // Permission check
   if (!isAdmin()) {
     return (
@@ -294,62 +714,91 @@ export default function AdminPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tổng người dùng</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{users.length}</div>
-            <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">+{users.filter((u) => u.status === "online").length}</span> đang trực
-              tuyến
-            </p>
-          </CardContent>
-        </Card>
+      {statsLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                <div className="h-4 w-4 bg-muted animate-pulse rounded" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-16 bg-muted animate-pulse rounded mb-2" />
+                <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : dashboardStats ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Người dùng</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardStats.users.total}</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600">{dashboardStats.users.active}</span> hoạt động,{" "}
+                <span className="text-gray-500">{dashboardStats.users.inactive}</span> không hoạt động
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vai trò</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{roles.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {roles.filter((r) => !r.isSystem).length} vai trò tùy chỉnh
-            </p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Dự án</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardStats.projects.total}</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-blue-600">{dashboardStats.projects.active}</span> đang hoạt động
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Hoạt động</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round((users.filter((u) => u.status === "online").length / users.length) * 100)}%
-            </div>
-            <p className="text-xs text-muted-foreground">Tỷ lệ người dùng hoạt động</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Công việc</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardStats.tasks.total}</div>
+              <p className="text-xs text-muted-foreground">
+                <span className="text-green-600">{dashboardStats.tasks.completed}</span> hoàn thành,{" "}
+                <span className="text-orange-600">{dashboardStats.tasks.overdue}</span> quá hạn
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Admin</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {users.filter((u) => u.roles.includes("admin") || u.roles.includes("super_admin")).length}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {users.filter((u) => u.roles.includes("super_admin")).length} Super Admin
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Vai trò</CardTitle>
+              <Shield className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{roles.length}</div>
+              <p className="text-xs text-muted-foreground">
+                {roles.filter((r) => r.isSystem).length} hệ thống, {roles.filter((r) => !r.isSystem).length} tùy chỉnh
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Không có dữ liệu</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">--</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Tabs defaultValue="roles" className="space-y-6">
         <TabsList>
@@ -371,21 +820,29 @@ export default function AdminPage() {
         <TabsContent value="roles" className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Quản lý các vai trò và quyền hạn trong hệ thống</p>
-            <Button onClick={handleCreateRole}>
+            <Button onClick={handleCreateRole} disabled={rolesLoading}>
               <Plus className="mr-2 h-4 w-4" />
               Tạo vai trò mới
             </Button>
           </div>
 
+          {rolesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Đang tải vai trò...</p>
+              </div>
+            </div>
+          ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {roles.map((role, index) => (
+            {validRoles.map((role, index) => (
               <motion.div
                 key={role.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
-                <Card className={cn("relative", role.isSystem && "border-dashed")}>
+                <Card className={cn("relative h-full", role.isSystem && "border-dashed")}>
                   {role.isSystem && (
                     <Badge variant="secondary" className="absolute right-3 top-3 text-xs">
                       Hệ thống
@@ -395,19 +852,19 @@ export default function AdminPage() {
                     <div className="flex items-center gap-3">
                       <div
                         className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
-                        style={{ backgroundColor: role.color }}
+                        style={{ backgroundColor: role.color || "#64748b" }}
                       >
-                        {role.displayName.charAt(0)}
+                        {getRoleInitial(role)}
                       </div>
                       <div>
-                        <CardTitle className="text-base">{role.displayName}</CardTitle>
+                        <CardTitle className="text-base">{getRoleDisplayName(role)}</CardTitle>
                         <p className="text-xs text-muted-foreground font-mono">{role.name}</p>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <p className="text-sm text-muted-foreground line-clamp-2">{role.description}</p>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 min-h-[60px] content-start">
                       {role.name === "super_admin" ? (
                         <Badge variant="outline" className="text-xs">
                           Tất cả quyền
@@ -429,7 +886,14 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t">
                       <span className="text-xs text-muted-foreground">
-                        {users.filter((u) => u.roles.includes(role.name as any)).length} người dùng
+                        {Array.isArray(users) 
+                          ? users.filter((u) => {
+                              if (!u.roles || !Array.isArray(u.roles)) return false
+                              return u.roles.some((r: any) => 
+                                typeof r === 'string' ? r === role.name : r?.name === role.name
+                              )
+                            }).length 
+                          : 0} người dùng
                       </span>
                       <div className="flex gap-1">
                         <TooltipProvider>
@@ -477,6 +941,7 @@ export default function AdminPage() {
               </motion.div>
             ))}
           </div>
+        )}
 
           {/* Permission Matrix */}
           <Card>
@@ -490,16 +955,16 @@ export default function AdminPage() {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left p-2 font-medium">Quyền</th>
-                      {roles.slice(0, 5).map((role) => (
+                      {Array.isArray(validRoles) && validRoles.map((role) => (
                         <th key={role.id} className="text-center p-2 font-medium min-w-[100px]">
                           <div className="flex flex-col items-center gap-1">
                             <div
                               className="h-6 w-6 rounded flex items-center justify-center text-white text-xs font-bold"
-                              style={{ backgroundColor: role.color }}
+                              style={{ backgroundColor: role.color || "#64748b" }}
                             >
-                              {role.displayName.charAt(0)}
+                              {getRoleInitial(role)}
                             </div>
-                            <span className="text-xs">{role.displayName}</span>
+                            <span className="text-xs">{getRoleDisplayName(role)}</span>
                           </div>
                         </th>
                       ))}
@@ -509,14 +974,14 @@ export default function AdminPage() {
                     {Object.entries(PERMISSION_GROUPS).map(([groupKey, group]) => (
                       <React.Fragment key={groupKey}>
                         <tr className="bg-muted/30">
-                          <td colSpan={6} className="p-2 font-medium">
+                          <td colSpan={Array.isArray(validRoles) ? validRoles.length + 1 : 2} className="p-2 font-medium">
                             {group.label}
                           </td>
                         </tr>
                         {group.permissions.map((perm) => (
                           <tr key={perm} className="border-b">
                             <td className="p-2 text-muted-foreground">{PERMISSION_LABELS[perm]}</td>
-                            {roles.slice(0, 5).map((role) => {
+                            {Array.isArray(validRoles) && validRoles.map((role) => {
                               const hasPermission = role.name === "super_admin" || role.permissions.includes(perm)
                               return (
                                 <td key={role.id} className="text-center p-2">
@@ -565,6 +1030,28 @@ export default function AdminPage() {
 
           <Card>
             <CardContent className="p-0">
+              {usersLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Đang tải người dùng...</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Users className="h-12 w-12 text-muted-foreground/50" />
+                  <div className="text-center">
+                    <p className="font-medium">Không có người dùng nào</p>
+                    <p className="text-sm text-muted-foreground">
+                      {searchQuery ? "Không tìm thấy kết quả phù hợp" : "Bắt đầu bằng cách thêm người dùng mới"}
+                    </p>
+                  </div>
+                  {!searchQuery && (
+                    <Button onClick={() => setIsAddUserDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Thêm người dùng đầu tiên
+                    </Button>
+                  )}
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -603,21 +1090,29 @@ export default function AdminPage() {
                         </td>
                         <td className="p-4">
                           <div className="flex flex-wrap gap-1">
-                            {user.roles.map((roleName) => {
-                              const role = roles.find((r) => r.name === roleName)
-                              return (
-                                <Badge
-                                  key={roleName}
-                                  variant="outline"
-                                  style={{
-                                    borderColor: role?.color,
-                                    color: role?.color,
-                                  }}
-                                >
-                                  {role?.displayName || roleName}
-                                </Badge>
-                              )
-                            })}
+                            {user.roles && user.roles.length > 0 ? (
+                              user.roles.map((roleItem: any) => {
+                                // Handle both RoleDefinition object and string
+                                const roleName = typeof roleItem === 'string' ? roleItem : roleItem?.name
+                                const roleObj = typeof roleItem === 'string' 
+                                  ? roles.find((r) => r.name === roleItem)
+                                  : roleItem
+                                return (
+                                  <Badge
+                                    key={roleName || 'unknown'}
+                                    variant="outline"
+                                    style={{
+                                      borderColor: roleObj?.color,
+                                      color: roleObj?.color,
+                                    }}
+                                  >
+                                    {roleObj?.displayName || roleName}
+                                  </Badge>
+                                )
+                              })
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Chưa có vai trò</span>
+                            )}
                           </div>
                         </td>
                         <td className="p-4">
@@ -650,7 +1145,13 @@ export default function AdminPage() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={() => handleToggleLockUser(user.id)}
+                                    onClick={() => {
+                                      if (user.isLocked) {
+                                        handleUnlockUser(user.id)
+                                      } else {
+                                        handleLockUser(user.id)
+                                      }
+                                    }}
                                   >
                                     {user.isLocked ? (
                                       <Unlock className="h-4 w-4" />
@@ -687,181 +1188,370 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* System Settings Tab */}
         <TabsContent value="system" className="space-y-6">
+          {/* System Health Widget */}
+          {systemHealth && (
+            <Card className={cn(
+              "border-2",
+              systemHealth.status === "healthy" ? "border-green-500/50 bg-green-50/50 dark:bg-green-950/20" : "border-red-500/50 bg-red-50/50 dark:bg-red-950/20"
+            )}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-5 w-5" />
+                    <CardTitle className="text-lg">Trạng thái hệ thống</CardTitle>
+                  </div>
+                  <Badge variant={systemHealth.status === "healthy" ? "default" : "destructive"}>
+                    {systemHealth.status === "healthy" ? "Khỏe mạnh" : "Có vấn đề"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Cơ sở dữ liệu</p>
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "h-2 w-2 rounded-full",
+                        systemHealth.database.connected ? "bg-green-500" : "bg-red-500"
+                      )} />
+                      <p className="font-medium">
+                        {systemHealth.database.connected ? "Đã kết nối" : "Mất kết nối"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Bộ nhớ sử dụng</p>
+                    <p className="font-medium">{systemHealth.server.memoryUsage.heapUsed} MB / {systemHealth.server.memoryUsage.heapTotal} MB</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Thời gian hoạt động</p>
+                    <p className="font-medium">{formatUptime(systemHealth.server.uptime)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* System Settings */}
           <Card>
-            <CardHeader>
-              <CardTitle>Cấu hình ứng dụng</CardTitle>
-              <CardDescription>Các thiết lập toàn hệ thống</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Cài đặt hệ thống</CardTitle>
+                <CardDescription>Quản lý các thiết lập toàn hệ thống</CardDescription>
+              </div>
+              {can("settings.manage") && (
+                <Badge variant="outline" className="gap-1">
+                  <Settings className="h-3 w-3" />
+                  {systemSettings.length} cài đặt
+                </Badge>
+              )}
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>Tên ứng dụng</Label>
-                <Input defaultValue="TaskMaster" />
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <h4 className="font-medium">Đăng ký & Truy cập</h4>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Cho phép đăng ký mới</p>
-                    <p className="text-sm text-muted-foreground">Người dùng mới có thể tự đăng ký tài khoản</p>
-                  </div>
-                  <Switch defaultChecked />
+            <CardContent>
+              {settingsLoading ? (
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+                        <div className="h-3 w-64 bg-muted animate-pulse rounded" />
+                      </div>
+                      <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Xác thực email bắt buộc</p>
-                    <p className="text-sm text-muted-foreground">Yêu cầu xác thực email khi đăng ký</p>
-                  </div>
-                  <Switch defaultChecked />
+              ) : systemSettings.length === 0 ? (
+                <div className="text-center py-12">
+                  <Settings className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">Chưa có cài đặt nào</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Chế độ bảo trì</p>
-                    <p className="text-sm text-muted-foreground">Tạm dừng hệ thống, chỉ admin truy cập</p>
-                  </div>
-                  <Switch />
+              ) : (
+                <div className="space-y-6">
+                  {/* Group settings by category */}
+                  {[
+                    { 
+                      title: "Ứng dụng", 
+                      icon: Settings, 
+                      keys: ["app.email_verification_required", "app.registration_enabled"],
+                      color: "text-blue-600 dark:text-blue-400",
+                      bgColor: "bg-blue-50 dark:bg-blue-950"
+                    },
+                    { 
+                      title: "Email", 
+                      icon: Mail, 
+                      keys: ["email.enabled"],
+                      color: "text-purple-600 dark:text-purple-400",
+                      bgColor: "bg-purple-50 dark:bg-purple-950"
+                    },
+                    { 
+                      title: "Tệp tin & Upload", 
+                      icon: Server, 
+                      keys: ["file.max_upload_size", "file.max_attachments_per_task", "max.upload.size"],
+                      color: "text-orange-600 dark:text-orange-400",
+                      bgColor: "bg-orange-50 dark:bg-orange-950"
+                    },
+                    { 
+                      title: "Phiên làm việc", 
+                      icon: Activity, 
+                      keys: ["session.timeout_minutes"],
+                      color: "text-green-600 dark:text-green-400",
+                      bgColor: "bg-green-50 dark:bg-green-950"
+                    },
+                    { 
+                      title: "Công việc", 
+                      icon: TrendingUp, 
+                      keys: ["task.max_per_user"],
+                      color: "text-pink-600 dark:text-pink-400",
+                      bgColor: "bg-pink-50 dark:bg-pink-950"
+                    },
+                  ].map((category) => {
+                    // Filter out app.name and app.version
+                    const categorySettings = systemSettings.filter(s => 
+                      category.keys.some(key => s.key.toLowerCase().includes(key.toLowerCase())) &&
+                      !["app.name", "app.version"].includes(s.key)
+                    )
+                    
+                    if (categorySettings.length === 0) return null
+                    
+                    const Icon = category.icon
+                    
+                    return (
+                      <div key={category.title} className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className={cn("p-2 rounded-lg", category.bgColor)}>
+                            <Icon className={cn("h-5 w-5", category.color)} />
+                          </div>
+                          <h3 className="font-semibold text-lg">{category.title}</h3>
+                        </div>
+                        <div className="grid gap-3 ml-12">
+                          {categorySettings.map((setting) => {
+                            const translated = translateSetting(setting.key, setting.description)
+                            const isToggle = isBooleanSetting(setting.key)
+                            
+                            return (
+                              <div
+                                key={setting.id}
+                                className="flex items-center justify-between p-4 border rounded-lg hover:shadow-md transition-all bg-card"
+                              >
+                                <div className="flex-1 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-base">{translated.label}</p>
+                                    {setting.isPublic && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        Công khai
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{translated.description}</p>
+                                  {!isToggle && (
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <Badge variant="outline" className="font-mono text-sm">
+                                        {setting.value}
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                                {can("settings.manage") && (
+                                  isToggle ? (
+                                    <Switch
+                                      checked={setting.value === "true"}
+                                      onCheckedChange={() => handleToggleSetting(setting)}
+                                      className="ml-4"
+                                    />
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditSetting(setting)}
+                                      className="ml-4"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  
+                  {/* Uncategorized settings */}
+                  {(() => {
+                    const categorizedKeys = [
+                      "app.name", "app.version", "app.email_verification_required", "app.registration_enabled",
+                      "email.enabled",
+                      "file.max_upload_size", "file.max_attachments_per_task", "max.upload.size",
+                      "session.timeout_minutes",
+                      "task.max_per_user"
+                    ]
+                    const uncategorized = systemSettings.filter(s => 
+                      !categorizedKeys.some(key => s.key.toLowerCase().includes(key.toLowerCase())) &&
+                      !["app.name", "app.version"].includes(s.key)
+                    )
+                    
+                    if (uncategorized.length === 0) return null
+                    
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-950">
+                            <Settings className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                          </div>
+                          <h3 className="font-semibold text-lg">Khác</h3>
+                        </div>
+                        <div className="grid gap-3 ml-12">
+                          {uncategorized.map((setting) => {
+                            const translated = translateSetting(setting.key, setting.description)
+                            const isToggle = isBooleanSetting(setting.key)
+                            
+                            return (
+                              <div
+                                key={setting.id}
+                                className="flex items-center justify-between p-4 border rounded-lg hover:shadow-md transition-all bg-card"
+                              >
+                                <div className="flex-1 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-base">{translated.label}</p>
+                                    {setting.isPublic && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        Công khai
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{translated.description}</p>
+                                  {!isToggle && (
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <Badge variant="outline" className="font-mono text-sm">
+                                        {setting.value}
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                                {can("settings.manage") && (
+                                  isToggle ? (
+                                    <Switch
+                                      checked={setting.value === "true"}
+                                      onCheckedChange={() => handleToggleSetting(setting)}
+                                      className="ml-4"
+                                    />
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditSetting(setting)}
+                                      className="ml-4"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
-              </div>
-              <Separator />
-              <div className="space-y-4">
-                <h4 className="font-medium">Giám sát & Logging</h4>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Ghi log hoạt động</p>
-                    <p className="text-sm text-muted-foreground">Lưu lại tất cả hoạt động người dùng</p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Ghi log API</p>
-                    <p className="text-sm text-muted-foreground">Ghi lại các request API</p>
-                  </div>
-                  <Switch />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button>
-                  <Save className="mr-2 h-4 w-4" />
-                  Lưu cấu hình
-                </Button>
-              </div>
+              )}
             </CardContent>
           </Card>
 
+          {/* Activity Logs */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Cấu hình Email
-              </CardTitle>
-              <CardDescription>Thiết lập máy chủ email để gửi thông báo</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Nhật ký hoạt động</CardTitle>
+                  <CardDescription>Theo dõi các hoạt động trong hệ thống</CardDescription>
+                </div>
+                {can("settings.manage") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsClearLogsDialogOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Xóa logs cũ
+                  </Button>
+                )}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>SMTP Host</Label>
-                  <Input placeholder="smtp.gmail.com" defaultValue="smtp.gmail.com" />
+            <CardContent>
+              {logsLoading ? (
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 p-3 border rounded-lg">
+                      <div className="h-10 w-10 bg-muted animate-pulse rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-3/4 bg-muted animate-pulse rounded" />
+                        <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <Label>SMTP Port</Label>
-                  <Input placeholder="587" type="number" defaultValue="587" />
+              ) : !activityLogs || activityLogs.items.length === 0 ? (
+                <div className="text-center py-12">
+                  <Activity className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">Chưa có nhật ký hoạt động</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email người gửi</Label>
-                  <Input placeholder="noreply@company.com" type="email" defaultValue="noreply@taskmaster.app" />
+              ) : (
+                <div className="space-y-3">
+                  {activityLogs.items.map((log) => (
+                    <div key={log.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={log.user?.avatarUrl} />
+                        <AvatarFallback>{getInitials(log.user?.name || "U")}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm">
+                          <span className="font-medium">{log.user?.name || "Unknown"}</span>
+                          {" "}
+                          <span className="text-muted-foreground">{log.action}</span>
+                          {" "}
+                          <span className="font-medium">{log.entityType}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(log.createdAt).toLocaleString("vi-VN")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {activityLogs.totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-3 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        Trang {activityLogs.page} / {activityLogs.totalPages}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={activityLogs.page === 1}
+                          onClick={() => fetchActivityLogs({ page: activityLogs.page - 1, limit: 10 })}
+                        >
+                          Trước
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={activityLogs.page === activityLogs.totalPages}
+                          onClick={() => fetchActivityLogs({ page: activityLogs.page + 1, limit: 10 })}
+                        >
+                          Sau
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label>Tên người gửi</Label>
-                  <Input placeholder="TaskMaster" defaultValue="TaskMaster System" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Username SMTP</Label>
-                  <Input placeholder="user@gmail.com" type="email" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Password SMTP</Label>
-                  <Input placeholder="••••••••" type="password" />
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="ssl" defaultChecked />
-                <Label htmlFor="ssl" className="font-normal">
-                  Sử dụng SSL/TLS
-                </Label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline">
-                  Test kết nối
-                </Button>
-                <Button>
-                  <Save className="mr-2 h-4 w-4" />
-                  Lưu cấu hình
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Giới hạn hệ thống</CardTitle>
-              <CardDescription>Các giới hạn và ràng buộc của hệ thống</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Kích thước file upload tối đa (MB)</Label>
-                  <Input type="number" defaultValue="10" />
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox id="unlimited-file-size" />
-                    <Label htmlFor="unlimited-file-size" className="font-normal text-sm">
-                      Không giới hạn
-                    </Label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Số lượng file đính kèm tối đa</Label>
-                  <Input type="number" defaultValue="5" />
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox id="unlimited-attachments" />
-                    <Label htmlFor="unlimited-attachments" className="font-normal text-sm">
-                      Không giới hạn
-                    </Label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Thời gian session (phút)</Label>
-                  <Input type="number" defaultValue="60" />
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox id="unlimited-session" />
-                    <Label htmlFor="unlimited-session" className="font-normal text-sm">
-                      Không giới hạn
-                    </Label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Số lượng task tối đa/user</Label>
-                  <Input type="number" defaultValue="100" />
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Checkbox id="unlimited-tasks" />
-                    <Label htmlFor="unlimited-tasks" className="font-normal text-sm">
-                      Không giới hạn
-                    </Label>
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button>
-                  <Save className="mr-2 h-4 w-4" />
-                  Lưu cấu hình
-                </Button>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1073,14 +1763,14 @@ export default function AdminPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((role) => (
+                  {validRoles.map((role) => (
                     <SelectItem key={role.id} value={role.name}>
                       <div className="flex items-center gap-2">
                         <div
                           className="h-3 w-3 rounded"
-                          style={{ backgroundColor: role.color }}
+                          style={{ backgroundColor: role.color || "#64748b" }}
                         />
-                        {role.displayName}
+                        {getRoleDisplayName(role)}
                       </div>
                     </SelectItem>
                   ))}
@@ -1142,14 +1832,14 @@ export default function AdminPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {roles.map((role) => (
+                    {validRoles.map((role) => (
                       <SelectItem key={role.id} value={role.name}>
                         <div className="flex items-center gap-2">
                           <div
                             className="h-3 w-3 rounded"
-                            style={{ backgroundColor: role.color }}
+                            style={{ backgroundColor: role.color || "#64748b" }}
                           />
-                          {role.displayName}
+                          {getRoleDisplayName(role)}
                         </div>
                       </SelectItem>
                     ))}
@@ -1319,6 +2009,84 @@ export default function AdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Setting Dialog */}
+      <Dialog open={isSettingDialogOpen} onOpenChange={setIsSettingDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa cài đặt</DialogTitle>
+            <DialogDescription>
+              Cập nhật giá trị cài đặt hệ thống
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSetting && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Key</Label>
+                <Input value={editingSetting.key} disabled className="font-mono" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Value</Label>
+                <Input
+                  value={editingSetting.value}
+                  onChange={(e) =>
+                    setEditingSetting({ ...editingSetting, value: e.target.value })
+                  }
+                  placeholder="Nhập giá trị"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mô tả (tùy chọn)</Label>
+                <Input
+                  value={editingSetting.description}
+                  onChange={(e) =>
+                    setEditingSetting({ ...editingSetting, description: e.target.value })
+                  }
+                  placeholder="Nhập mô tả"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsSettingDialogOpen(false)
+                setEditingSetting(null)
+              }}
+            >
+              Hủy
+            </Button>
+            <Button onClick={handleSaveSetting} disabled={settingsLoading}>
+              {settingsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Save className="mr-2 h-4 w-4" />
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Activity Logs Dialog */}
+      <AlertDialog open={isClearLogsDialogOpen} onOpenChange={setIsClearLogsDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa nhật ký cũ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hành động này sẽ xóa tất cả nhật ký hoạt động cũ hơn 90 ngày. Dữ liệu đã xóa không thể khôi phục.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearLogs} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Xóa nhật ký
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

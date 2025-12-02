@@ -33,11 +33,11 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true })
         try {
           const response = await api.login(email, password)
-          api.setToken(response.token)
-          socketClient.connect(response.token)
+          api.setToken(response.accessToken)
+          socketClient.connect(response.accessToken)
           set({
             user: response.user,
-            token: response.token,
+            token: response.accessToken,
             isAuthenticated: true,
             isLoading: false,
           })

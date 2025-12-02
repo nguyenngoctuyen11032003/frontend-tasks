@@ -7,7 +7,10 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function initMSW() {
-      if (process.env.NODE_ENV === "development") {
+      // Check if MSW is enabled via environment variable
+      const mswEnabled = process.env.NEXT_PUBLIC_ENABLE_MSW === "true"
+      
+      if (process.env.NODE_ENV === "development" && mswEnabled) {
         // Dynamically import MSW to avoid including it in production bundle
         const { worker } = await import("@/mocks/browser")
         
@@ -19,6 +22,8 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
         })
 
         console.log("[MSW] Mock Service Worker initialized")
+      } else {
+        console.log("[MSW] Bypassing MSW - Using real backend API")
       }
       setMswReady(true)
     }
@@ -26,7 +31,7 @@ export function MSWProvider({ children }: { children: React.ReactNode }) {
     initMSW()
   }, [])
 
-  // Don't render children until MSW is ready in development
+  // Don't render children until MSW check is complete in development
   if (process.env.NODE_ENV === "development" && !mswReady) {
     return null
   }

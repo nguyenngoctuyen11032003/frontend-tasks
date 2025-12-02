@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -37,7 +37,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InviteMemberModal } from "@/components/team/invite-member-modal"
 import { EmailComposeModal } from "@/components/team/email-compose-modal"
 import { RoleManagementDialog } from "@/components/team/role-management-dialog"
-import { mockUsers, mockTasks, mockRoleDefinitions } from "@/mocks/data"
+import { mockUsers, mockTasks } from "@/mocks/data"
+import { useRolesStore } from "@/stores/roles-store"
+import api from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { User } from "@/types"
 
@@ -45,6 +47,7 @@ type ViewMode = "grid" | "list"
 type StatusFilter = "all" | "online" | "away" | "offline"
 
 export default function TeamPage() {
+  const { roles, fetchRoles } = useRolesStore()
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [departmentFilter, setDepartmentFilter] = useState<string>("all")
@@ -56,6 +59,11 @@ export default function TeamPage() {
   const [emailRecipient, setEmailRecipient] = useState<User | null>(null)
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const router = useRouter()
+
+  // Fetch roles on mount
+  useEffect(() => {
+    fetchRoles()
+  }, [fetchRoles])
 
   const departments = [...new Set(mockUsers.map((u) => u.department).filter(Boolean))]
 
@@ -88,12 +96,12 @@ export default function TeamPage() {
   }
 
   const getRoleColor = (roleName: string) => {
-    const role = mockRoleDefinitions.find((r) => r.name === roleName)
+    const role = roles.find((r) => r.name === roleName)
     return role?.color || "#64748b"
   }
 
   const getRoleDisplayName = (roleName: string) => {
-    const role = mockRoleDefinitions.find((r) => r.name === roleName)
+    const role = roles.find((r) => r.name === roleName)
     return role?.displayName || roleName
   }
 

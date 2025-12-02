@@ -17,8 +17,6 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html>
-      <body>
         <div className="flex min-h-screen items-center justify-center p-4 bg-background">
           <Card className="w-full max-w-xl">
             <CardHeader>
@@ -81,7 +79,5 @@ export default function GlobalError({
             </CardContent>
           </Card>
         </div>
-      </body>
-    </html>
   );
 }

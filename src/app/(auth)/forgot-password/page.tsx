@@ -9,6 +9,7 @@ import { ArrowLeft, Loader2, Mail, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import api from "@/lib/api"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -36,11 +37,15 @@ export default function ForgotPasswordPage() {
     setError("")
     setIsSubmitting(true)
 
-    // Mock API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-
-    setIsSubmitting(false)
-    setIsSuccess(true)
+    try {
+      // Call real API
+      await api.forgotPassword(email)
+      setIsSuccess(true)
+    } catch (error: any) {
+      setError(error.message || "Có lỗi xảy ra. Vui lòng thử lại.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (

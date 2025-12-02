@@ -11,10 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
+import api from "@/lib/api"
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -24,7 +28,7 @@ export default function RegisterPage() {
     agreeTerms: false,
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validation
@@ -48,8 +52,32 @@ export default function RegisterPage() {
       return
     }
 
-    // Handle registration logic here
-    toast.success("Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.")
+    setIsSubmitting(true)
+
+    try {
+      // Call real API
+      const response = await api.register(
+        formData.fullName,
+        formData.email,
+        formData.password,
+        formData.phone || undefined
+      )
+
+      toast.success("Đăng ký thành công!", {
+        description: "Vui lòng kiểm tra email để xác nhận tài khoản.",
+      })
+
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        router.push("/login")
+      }, 2000)
+    } catch (error: any) {
+      toast.error("Đăng ký thất bại", {
+        description: error.message || "Vui lòng thử lại sau",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (

@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Shield, Plus, Trash2, Edit, Save, X, ChevronDown, ChevronRight } from "lucide-react"
+import { Shield, Plus, Trash2, Edit, Save, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { mockRoleDefinitions, PERMISSION_LABELS } from "@/mocks/data"
+import { PERMISSION_LABELS } from "@/mocks/data"
+import { useRolesStore } from "@/stores/roles-store"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import type { RoleDefinition, Permission } from "@/types"
@@ -31,7 +32,20 @@ interface RoleManagementDialogProps {
 }
 
 export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialogProps) {
-  const [roles, setRoles] = useState<RoleDefinition[]>(mockRoleDefinitions)
+  const {
+    roles,
+    availablePermissions,
+    isLoading,
+    isFetching,
+    error,
+    fetchRoles,
+    fetchAvailablePermissions,
+    createRole,
+    updateRole,
+    deleteRole,
+    clearError,
+  } = useRolesStore()
+
   const [selectedRole, setSelectedRole] = useState<RoleDefinition | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -39,8 +53,24 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
   const [editDisplayName, setEditDisplayName] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editColor, setEditColor] = useState("#3b82f6")
-  const [editPermissions, setEditPermissions] = useState<Permission[]>([])
+  const [editPermissions, setEditPermissions] = useState<string[]>([])
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  // Fetch roles and permissions when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchRoles()
+      fetchAvailablePermissions()
+    }
+  }, [open, fetchRoles, fetchAvailablePermissions])
+
+  // Show error toast
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      clearError()
+    }
+  }, [error, clearError])
 
   // Group permissions by category
   const permissionsByCategory: Record<string, Permission[]> = {}
@@ -103,48 +133,40 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
     setExpandedCategories(new Set(Object.keys(permissionsByCategory)))
   }
 
-  const handleSaveRole = () => {
+  const handleSaveRole = async () => {
     if (!editDisplayName.trim()) {
       toast.error("Vui lòng nhập tên vai trò")
       return
     }
 
-    if (isCreating) {
-      const newRole: RoleDefinition = {
-        id: `role-${Date.now()}`,
-        name: editName.toLowerCase().replace(/\s+/g, "_"),
-        displayName: editDisplayName,
-        description: editDescription,
-        permissions: editPermissions,
-        isSystem: false,
-        color: editColor,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    try {
+      if (isCreating) {
+        const newRole = await createRole({
+          name: editName || editDisplayName.toLowerCase().replace(/\s+/g, "_"),
+          displayName: editDisplayName,
+          description: editDescription,
+          color: editColor,
+          permissions: editPermissions,
+        })
+        setSelectedRole(newRole)
+        toast.success("Đã tạo vai trò mới")
+      } else if (selectedRole) {
+        const updatedRole = await updateRole(selectedRole.id, {
+          name: editName,
+          displayName: editDisplayName,
+          description: editDescription,
+          color: editColor,
+          permissions: editPermissions,
+        })
+        setSelectedRole(updatedRole)
+        toast.success("Đã cập nhật vai trò")
       }
-      setRoles([...roles, newRole])
-      setSelectedRole(newRole)
-      toast.success("Đã tạo vai trò mới")
-    } else if (selectedRole) {
-      const updatedRoles = roles.map((r) =>
-        r.id === selectedRole.id
-          ? {
-              ...r,
-              name: editName,
-              displayName: editDisplayName,
-              description: editDescription,
-              color: editColor,
-              permissions: editPermissions,
-              updatedAt: new Date().toISOString(),
-            }
-          : r
-      )
-      setRoles(updatedRoles)
-      setSelectedRole(updatedRoles.find((r) => r.id === selectedRole.id)!)
-      toast.success("Đã cập nhật vai trò")
-    }
 
-    setIsEditing(false)
-    setIsCreating(false)
+      setIsEditing(false)
+      setIsCreating(false)
+    } catch (error: any) {
+      // Error toast handled by store
+    }
   }
 
   const handleCancelEdit = () => {
@@ -152,19 +174,24 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
     setIsCreating(false)
   }
 
-  const handleDeleteRole = (role: RoleDefinition) => {
+  const handleDeleteRole = async (role: RoleDefinition) => {
     if (role.isSystem) {
       toast.error("Không thể xóa vai trò hệ thống")
       return
     }
-    setRoles(roles.filter((r) => r.id !== role.id))
-    if (selectedRole?.id === role.id) {
-      setSelectedRole(null)
+
+    try {
+      await deleteRole(role.id)
+      if (selectedRole?.id === role.id) {
+        setSelectedRole(null)
+      }
+      toast.success("Đã xóa vai trò")
+    } catch (error: any) {
+      // Error toast handled by store
     }
-    toast.success("Đã xóa vai trò")
   }
 
-  const togglePermission = (permission: Permission) => {
+  const togglePermission = (permission: string) => {
     if (editPermissions.includes(permission)) {
       setEditPermissions(editPermissions.filter((p) => p !== permission))
     } else {
@@ -173,7 +200,7 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
   }
 
   const toggleCategoryPermissions = (category: string) => {
-    const categoryPerms = permissionsByCategory[category]
+    const categoryPerms = permissionsByCategory[category] as string[]
     const allSelected = categoryPerms.every((p) => editPermissions.includes(p))
     if (allSelected) {
       setEditPermissions(editPermissions.filter((p) => !categoryPerms.includes(p)))
@@ -197,11 +224,22 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
 
         <Tabs defaultValue="roles" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-2 shrink-0">
-            <TabsTrigger value="roles">Danh sách vai trò ({roles.length})</TabsTrigger>
+            <TabsTrigger value="roles">
+              Danh sách vai trò ({roles.length})
+              {isFetching && <Loader2 className="ml-2 h-3 w-3 animate-spin" />}
+            </TabsTrigger>
             <TabsTrigger value="permissions">Chi tiết quyền</TabsTrigger>
           </TabsList>
 
             <TabsContent value="roles" className="flex-1 mt-4 overflow-hidden">
+              {isFetching && roles.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center space-y-3">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Đang tải vai trò...</p>
+                  </div>
+                </div>
+              ) : (
               <div className="grid grid-cols-3 gap-4 h-full">
                 {/* Roles List */}
                 <div className="col-span-1 border-r pr-4 flex flex-col overflow-hidden">
@@ -484,6 +522,7 @@ export function RoleManagementDialog({ open, onOpenChange }: RoleManagementDialo
                   )}
                 </div>
               </div>
+              )}
             </TabsContent>
 
             <TabsContent value="permissions" className="flex-1 mt-4 overflow-hidden">

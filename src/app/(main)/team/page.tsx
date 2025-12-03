@@ -220,7 +220,7 @@ export default function TeamPage() {
                     <SelectValue placeholder="Nhóm" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tất cả nhóm</SelectItem>
+                    <SelectItem value="all">Tất cả phòng ban</SelectItem>
                     {departments.map((dept) => (
                       <SelectItem key={dept} value={dept!}>
                         {dept}

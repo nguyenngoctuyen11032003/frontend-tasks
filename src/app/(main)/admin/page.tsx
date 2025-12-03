@@ -1057,7 +1057,7 @@ export default function AdminPage() {
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="text-left p-4 font-medium">Người dùng</th>
-                      <th className="text-left p-4 font-medium">Nhóm</th>
+                      <th className="text-left p-4 font-medium">Phòng ban</th>
                       <th className="text-left p-4 font-medium">Vai trò</th>
                       <th className="text-left p-4 font-medium">Trạng thái</th>
                       <th className="text-right p-4 font-medium">Hành động</th>

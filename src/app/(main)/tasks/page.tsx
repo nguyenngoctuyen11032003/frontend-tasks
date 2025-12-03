@@ -1,10 +1,11 @@
 "use client"
 import { useState, useMemo, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Plus, Search, Kanban, List, Calendar, SlidersHorizontal } from "lucide-react"
+import { Plus, Search, Kanban, List, Calendar, SlidersHorizontal, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCard } from "@/components/tasks/task-card"
@@ -13,19 +14,18 @@ import { TaskCreateModal } from "@/components/tasks/task-create-modal"
 import { FilterPanel } from "@/components/filters/filter-panel"
 import { FilterChips } from "@/components/filters/filter-chips"
 import { SortControl } from "@/components/sorting/sort-control"
-import { mockTasks, mockProjects } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
 import { FilterManager } from "@/lib/filters"
 import { SortManager, type SortConfig } from "@/lib/sorting"
 import type { Task, TaskStatus } from "@/types"
 import { toast } from "sonner"
-import { useUpdateTaskStatus } from "@/hooks/use-tasks"
+import { useTasksStore } from "@/stores/tasks-store"
+import { useProjectsStore } from "@/stores/projects-store"
 
 type ViewMode = "kanban" | "list" | "calendar"
 
 export default function TasksPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("kanban")
-  const [searchQuery, setSearchQuery] = useState("")
   const [projectFilter, setProjectFilter] = useState<string>("all")
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -38,40 +38,63 @@ export default function TasksPage() {
   )
 
   const { taskFilters } = useFilters()
-  const updateTaskStatus = useUpdateTaskStatus()
+  
+  // Tasks store
+  const {
+    tasks,
+    loading,
+    error,
+    searchQuery,
+    pagination,
+    fetchTasks,
+    setSearchQuery,
+    setPagination,
+    updateTask,
+  } = useTasksStore()
+
+  // Projects store for project filter dropdown
+  const { projects, fetchProjects } = useProjectsStore()
+
+  // Fetch tasks on mount and when filters/search/pagination/sort change
+  useEffect(() => {
+    fetchTasks({
+      search: searchQuery,
+      projectId: projectFilter !== "all" ? projectFilter : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
+      sortBy: sortConfig.field,
+      sortOrder: sortConfig.direction === "asc" ? "ASC" : "DESC",
+    }).catch((err) => {
+      console.error("Failed to fetch tasks:", err)
+    })
+  }, [searchQuery, projectFilter, pagination.page, pagination.limit, sortConfig, fetchTasks])
+
+  // Fetch projects for filter dropdown
+  useEffect(() => {
+    if (projects.length === 0) {
+      fetchProjects({ limit: 100 }).catch((err) => {
+        console.error("Failed to fetch projects:", err)
+      })
+    }
+  }, [projects.length, fetchProjects])
 
   // Save sort preference when it changes
   useEffect(() => {
     SortManager.saveSortPreference("task", sortConfig)
   }, [sortConfig])
 
-  // Apply filters and sorting
+  // Apply filters and sorting (client-side for additional filtering)
   const filteredAndSortedTasks = useMemo(() => {
-    let tasks = [...mockTasks]
-
-    // Apply project filter
-    if (projectFilter !== "all") {
-      tasks = tasks.filter((task) => task.projectId === projectFilter)
-    }
-
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      tasks = tasks.filter(
-        (task) =>
-          task.title.toLowerCase().includes(query) ||
-          task.description.toLowerCase().includes(query)
-      )
-    }
+    let tasksList = [...tasks]
 
     // Apply advanced filters from FilterManager
-    tasks = FilterManager.filterTasks(tasks, taskFilters)
+    tasksList = FilterManager.filterTasks(tasksList, taskFilters)
 
-    // Apply sorting
-    tasks = SortManager.sortTasks(tasks, sortConfig)
+    // Apply sorting (already sorted by API, but apply client-side for filtered results)
+    tasksList = SortManager.sortTasks(tasksList, sortConfig)
 
-    return tasks
-  }, [projectFilter, searchQuery, taskFilters, sortConfig])
+    return tasksList
+  }, [tasks, taskFilters, sortConfig])
 
   const groupedByDate = useMemo(() => {
     return filteredAndSortedTasks.reduce(
@@ -96,23 +119,30 @@ export default function TasksPage() {
     setIsDetailOpen(false)
   }
 
-  const handleDeleteTask = (taskId: string) => {
-    // TODO: Call API to delete task
+  const handleDeleteTask = async (taskId: string) => {
+    // Task deletion is handled in TaskDetailDialog component
     toast.success("Xóa công việc thành công")
   }
 
-  const handleTaskMove = (taskId: string, newStatus: TaskStatus) => {
-    updateTaskStatus.mutate(
-      { id: taskId, status: newStatus },
-      {
-        onSuccess: () => {
-          toast.success("Đã cập nhật trạng thái công việc")
-        },
-        onError: () => {
-          toast.error("Không thể cập nhật trạng thái")
-        },
-      }
-    )
+  const handleTaskMove = async (taskId: string, newStatus: TaskStatus) => {
+    try {
+      await updateTask(taskId, { status: newStatus })
+      toast.success("Đã cập nhật trạng thái công việc")
+    } catch (error) {
+      toast.error("Không thể cập nhật trạng thái")
+    }
+  }
+
+  const handleCreateSuccess = () => {
+    // Refresh tasks after creation
+    fetchTasks({
+      search: searchQuery,
+      projectId: projectFilter !== "all" ? projectFilter : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
+      sortBy: sortConfig.field,
+      sortOrder: sortConfig.direction === "asc" ? "ASC" : "DESC",
+    }).catch((err) => console.error("Failed to refresh tasks:", err))
   }
 
   return (
@@ -129,6 +159,24 @@ export default function TasksPage() {
         </Button>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {error}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-4"
+              onClick={() => fetchTasks()}
+            >
+              Thử lại
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Filters */}
       <Card>
         <CardContent className="p-6">
@@ -141,7 +189,10 @@ export default function TasksPage() {
                   placeholder="Tìm kiếm công việc..."
                   className="pl-9"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setPagination({ page: 1 })
+                  }}
                 />
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -190,13 +241,16 @@ export default function TasksPage() {
 
             {/* Quick Filter - Project and Stats */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-              <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <Select value={projectFilter} onValueChange={(value) => {
+                setProjectFilter(value)
+                setPagination({ page: 1 })
+              }}>
                 <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Dự án" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả dự án</SelectItem>
-                  {mockProjects.map((project) => (
+                  {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}
                     </SelectItem>
@@ -204,7 +258,16 @@ export default function TasksPage() {
                 </SelectContent>
               </Select>
               <div className="text-sm text-muted-foreground">
-                {filteredAndSortedTasks.length} / {mockTasks.length} công việc
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Đang tải...
+                  </span>
+                ) : (
+                  <span>
+                    {filteredAndSortedTasks.length} / {pagination.total} công việc
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -215,15 +278,36 @@ export default function TasksPage() {
       <FilterChips type="task" />
 
       {/* Content */}
-      {viewMode === "kanban" && (
+      {loading && tasks.length === 0 ? (
+        <Card>
+          <CardContent className="flex items-center justify-center py-16">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Đang tải công việc...</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : filteredAndSortedTasks.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Kanban className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">Không tìm thấy công việc</h3>
+            <p className="text-muted-foreground text-center mt-1">
+              {searchQuery || projectFilter !== "all" 
+                ? "Thử thay đổi bộ lọc hoặc tạo công việc mới"
+                : "Bắt đầu bằng cách tạo công việc đầu tiên"}
+            </p>
+          </CardContent>
+        </Card>
+      ) : viewMode === "kanban" ? (
         <KanbanBoard 
           tasks={filteredAndSortedTasks} 
           onTaskClick={handleTaskClick}
           onTaskMove={handleTaskMove}
         />
-      )}
-
-      {viewMode === "list" && (
+      ) : viewMode === "list" ? (
         <Card>
           <CardContent className="p-4 md:p-6">
             <div className="space-y-3">
@@ -237,15 +321,10 @@ export default function TasksPage() {
                   <TaskCard task={task} onClick={() => handleTaskClick(task)} />
                 </motion.div>
               ))}
-              {filteredAndSortedTasks.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">Không tìm thấy công việc nào</div>
-              )}
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {viewMode === "calendar" && (
+      ) : (
         <div className="space-y-6">
           {Object.entries(groupedByDate).map(([date, tasks]) => (
             <div key={date}>
@@ -265,6 +344,33 @@ export default function TasksPage() {
         </div>
       )}
 
+      {/* Pagination */}
+      {!loading && tasks.length > 0 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Trang {pagination.page} / {Math.ceil(pagination.total / pagination.limit)}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pagination.page === 1}
+              onClick={() => setPagination({ page: pagination.page - 1 })}
+            >
+              Trước
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pagination.page >= Math.ceil(pagination.total / pagination.limit)}
+              onClick={() => setPagination({ page: pagination.page + 1 })}
+            >
+              Tiếp
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Filter Panel */}
       <FilterPanel open={isFilterPanelOpen} onClose={() => setIsFilterPanelOpen(false)} type="task" />
 
@@ -278,7 +384,11 @@ export default function TasksPage() {
       />
 
       {/* Create Task Modal */}
-      <TaskCreateModal open={isCreateOpen} onOpenChange={setIsCreateOpen} />
+      <TaskCreateModal 
+        open={isCreateOpen} 
+        onOpenChange={setIsCreateOpen}
+        onSuccess={handleCreateSuccess}
+      />
 
       {/* Edit Task Modal */}
       <TaskCreateModal 
@@ -288,6 +398,7 @@ export default function TasksPage() {
         editTask={editingTask}
         onSuccess={() => {
           toast.success("Công việc đã được cập nhật")
+          handleCreateSuccess()
         }}
       />
     </div>

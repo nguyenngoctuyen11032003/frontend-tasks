@@ -130,7 +130,7 @@ export class FilterManager {
     // Filter by members
     if (filters.members && filters.members.length > 0) {
       filtered = filtered.filter((project) =>
-        project.members.some((memberId) => filters.members!.includes(memberId))
+        project.members.some((member: any) => filters.members!.includes(member.id || member))
       )
     }
 
@@ -153,6 +153,7 @@ export class FilterManager {
     if (filters.dateRange) {
       const { start, end } = filters.dateRange
       filtered = filtered.filter((project) => {
+        if (!project.deadline) return false
         const deadline = new Date(project.deadline)
         if (start && deadline < start) return false
         if (end && deadline > end) return false

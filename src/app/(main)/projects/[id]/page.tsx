@@ -1,8 +1,8 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowLeft, Plus, Settings, Users, Calendar, MoreHorizontal, Edit, Trash2, UserPlus, Search, SlidersHorizontal, Kanban as KanbanIcon, List as ListIcon } from "lucide-react"
+import { ArrowLeft, Plus, Settings, Users, Calendar, MoreHorizontal, Edit, Trash2, UserPlus, Search, SlidersHorizontal, Kanban as KanbanIcon, List as ListIcon, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -27,11 +27,13 @@ import { TaskCreateModal } from "@/components/tasks/task-create-modal"
 import { FilterPanel } from "@/components/filters/filter-panel"
 import { FilterChips } from "@/components/filters/filter-chips"
 import { SortControl } from "@/components/sorting/sort-control"
-import { mockProjects, mockTasks, mockUsers } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
+import { useProjectsStore } from "@/stores/projects-store"
+import { useTasksStore } from "@/stores/tasks-store"
+import { UsersService } from "@/services/users.service"
 import type { SortConfig, TaskSortField } from "@/lib/sorting"
 import Link from "next/link"
-import type { Task } from "@/types"
+import type { Task, User } from "@/types"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -42,7 +44,13 @@ type StatusFilter = "all" | "todo" | "in_progress" | "review" | "done"
 export default function ProjectDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const project = mockProjects.find((p) => p.id === id)
+  
+  const { getProject, fetchProject, selectedProject, loadingProjectId } = useProjectsStore()
+  const { tasks, fetchTasks, setFilters: setTaskFilters } = useTasksStore()
+  
+  const project = selectedProject || getProject(id)
+  const [isLoading, setIsLoading] = useState(true)
+  const [allUsers, setAllUsers] = useState<User[]>([])
   const [activeTab, setActiveTab] = useState("overview")
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false)
@@ -64,8 +72,59 @@ export default function ProjectDetailPage() {
     field: "createdAt",
     direction: "desc",
   })
+  const [editProjectData, setEditProjectData] = useState({
+    name: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+    status: "active" as "active" | "on-hold" | "completed",
+    color: "#3b82f6"
+  })
   
   const { taskFilters } = useFilters()
+
+  // Fetch project, tasks, and users on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+        await Promise.all([
+          fetchProject(id),
+          fetchTasks({ projectId: id, limit: 1000 }),
+          UsersService.getUsers({ limit: 100 }).then(result => setAllUsers(result.data))
+        ])
+      } catch (error) {
+        console.error("Failed to load project:", error)
+        toast.error("Không thể tải thông tin dự án")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
+  }, [id, fetchProject, fetchTasks])
+
+  // Sync edit form with project data
+  useEffect(() => {
+    if (project && isEditProjectOpen) {
+      setEditProjectData({
+        name: project.name || "",
+        description: project.description || "",
+        startDate: project.startDate?.split('T')[0] || "",
+        endDate: project.endDate?.split('T')[0] || "",
+        status: (project.status === "archived" ? "active" : project.status) || "active",
+        color: project.color || "#3b82f6"
+      })
+    }
+  }, [project, isEditProjectOpen])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="mt-4 text-muted-foreground">Đang tải dự án...</p>
+      </div>
+    )
+  }
 
   if (!project) {
     return (
@@ -78,7 +137,7 @@ export default function ProjectDetailPage() {
     )
   }
 
-  const projectTasks = mockTasks.filter((t) => t.projectId === project.id)
+  const projectTasks = tasks.filter((t) => t.projectId === project.id)
   
   // Apply filters
   const filteredTasks = projectTasks.filter((task) => {
@@ -122,6 +181,31 @@ export default function ProjectDetailPage() {
   const handleDeleteTask = (taskId: string) => {
     // TODO: Call API to delete task
     toast.success("Xóa công việc thành công")
+  }
+
+  const handleUpdateProject = async () => {
+    if (!editProjectData.name.trim()) {
+      toast.error("Vui lòng nhập tên dự án")
+      return
+    }
+
+    try {
+      const { updateProject } = useProjectsStore.getState()
+      await updateProject(project.id, {
+        name: editProjectData.name.trim(),
+        description: editProjectData.description.trim(),
+        startDate: editProjectData.startDate || undefined,
+        endDate: editProjectData.endDate || undefined,
+        status: editProjectData.status,
+        color: editProjectData.color
+      })
+      toast.success("Đã cập nhật dự án")
+      setIsEditProjectOpen(false)
+      await fetchProject(project.id)
+    } catch (error) {
+      toast.error("Không thể cập nhật dự án")
+      console.error("Update project error:", error)
+    }
   }
 
   const handleInviteMember = () => {
@@ -275,15 +359,12 @@ export default function ProjectDetailPage() {
                 </p>
               </div>
               <div className="flex -space-x-2">
-                {project.members.slice(0, 4).map((memberId) => {
-                  const member = mockUsers.find((u) => u.id === memberId)
-                  return member ? (
-                    <Avatar key={memberId} className="h-8 w-8 border-2 border-background">
-                      <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
-                      <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
-                    </Avatar>
-                  ) : null
-                })}
+                {project.members.slice(0, 4).map((member: any) => (
+                  <Avatar key={member.id} className="h-8 w-8 border-2 border-background">
+                    <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
+                    <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
+                  </Avatar>
+                ))}
               </div>
             </div>
           </CardContent>
@@ -352,22 +433,18 @@ export default function ProjectDetailPage() {
                   <CardTitle>Đội ngũ</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {project.members.map((memberId) => {
-                    const member = mockUsers.find((u) => u.id === memberId)
-                    if (!member) return null
-                    return (
-                      <div key={memberId} className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
-                          <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{member.name}</p>
-                          <p className="text-sm text-muted-foreground truncate">{member.role}</p>
-                        </div>
+                  {project.members.map((member: any) => (
+                    <div key={member.id} className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
+                        <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{member.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">{member.email}</p>
                       </div>
-                    )
-                  })}
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
 
@@ -469,7 +546,7 @@ export default function ProjectDetailPage() {
                     <SelectContent>
                       <SelectItem value="all">Tất cả</SelectItem>
                       {project.members.map((memberId) => {
-                        const member = mockUsers.find((u) => u.id === memberId)
+                        const member = allUsers.find((u: User) => u.id === memberId)
                         return member ? (
                           <SelectItem key={member.id} value={member.id}>
                             {member.name}
@@ -518,7 +595,7 @@ export default function ProjectDetailPage() {
                     )}
                     {assigneeFilter !== "all" && (
                       <div className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary rounded-md">
-                        Người thực hiện: {mockUsers.find(u => u.id === assigneeFilter)?.name}
+                        Người thực hiện: {allUsers.find(u => u.id === assigneeFilter)?.name}
                         <button onClick={() => setAssigneeFilter("all")} className="hover:bg-primary/20 rounded p-0.5">×</button>
                       </div>
                     )}
@@ -601,7 +678,7 @@ export default function ProjectDetailPage() {
                     <SelectContent>
                       <SelectItem value="all">Tất cả</SelectItem>
                       {project.members.map((memberId) => {
-                        const member = mockUsers.find((u) => u.id === memberId)
+                        const member = allUsers.find((u: User) => u.id === memberId)
                         return member ? (
                           <SelectItem key={member.id} value={member.id}>
                             {member.name}
@@ -650,7 +727,7 @@ export default function ProjectDetailPage() {
                     )}
                     {assigneeFilter !== "all" && (
                       <div className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary rounded-md">
-                        Người thực hiện: {mockUsers.find(u => u.id === assigneeFilter)?.name}
+                        Người thực hiện: {allUsers.find(u => u.id === assigneeFilter)?.name}
                         <button onClick={() => setAssigneeFilter("all")} className="hover:bg-primary/20 rounded p-0.5">×</button>
                       </div>
                     )}
@@ -679,15 +756,13 @@ export default function ProjectDetailPage() {
 
         <TabsContent value="members" className="mt-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {project.members.map((memberId, index) => {
-              const member = mockUsers.find((u) => u.id === memberId)
-              if (!member) return null
-              const memberTasks = projectTasks.filter((t) => t.assignees.some((a) => a.id === memberId))
+            {project.members.map((member: any, index: number) => {
+              const memberTasks = projectTasks.filter((t) => t.assignees.some((a) => a.id === member.id))
               const completedMemberTasks = memberTasks.filter((t) => t.status === "done").length
 
               return (
                 <motion.div
-                  key={memberId}
+                  key={member.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
@@ -701,7 +776,7 @@ export default function ProjectDetailPage() {
                         </Avatar>
                         <div>
                           <h3 className="font-semibold">{member.name}</h3>
-                          <p className="text-sm text-muted-foreground">{member.role}</p>
+                          <p className="text-sm text-muted-foreground">{member.email}</p>
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -736,6 +811,10 @@ export default function ProjectDetailPage() {
       <TaskCreateModal
         open={isCreateTaskOpen}
         onOpenChange={setIsCreateTaskOpen}
+        defaultProjectId={project.id}
+        onSuccess={() => {
+          fetchTasks({ projectId: project.id })
+        }}
       />
 
       {/* Task Detail Dialog */}
@@ -759,25 +838,43 @@ export default function ProjectDetailPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Tên dự án</Label>
-              <Input defaultValue={project.name} />
+              <Input 
+                value={editProjectData.name}
+                onChange={(e) => setEditProjectData(prev => ({ ...prev, name: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
               <Label>Mô tả</Label>
-              <Textarea defaultValue={project.description} rows={3} />
+              <Textarea 
+                value={editProjectData.description}
+                onChange={(e) => setEditProjectData(prev => ({ ...prev, description: e.target.value }))}
+                rows={3} 
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Ngày bắt đầu</Label>
-                <Input type="date" defaultValue={project.startDate?.split('T')[0] || ""} />
+                <Input 
+                  type="date" 
+                  value={editProjectData.startDate}
+                  onChange={(e) => setEditProjectData(prev => ({ ...prev, startDate: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Ngày kết thúc</Label>
-                <Input type="date" defaultValue={project.endDate?.split('T')[0] || ""} />
+                <Input 
+                  type="date" 
+                  value={editProjectData.endDate}
+                  onChange={(e) => setEditProjectData(prev => ({ ...prev, endDate: e.target.value }))}
+                />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Trạng thái</Label>
-              <Select defaultValue={project.status}>
+              <Select 
+                value={editProjectData.status}
+                onValueChange={(value) => setEditProjectData(prev => ({ ...prev, status: value as any }))}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -795,8 +892,8 @@ export default function ProjectDetailPage() {
                   <button
                     key={color}
                     className="h-8 w-8 rounded-full border-2 hover:scale-110 transition-transform"
-                    style={{ backgroundColor: color, borderColor: project.color === color ? '#000' : 'transparent' }}
-                    onClick={() => toast.success('Đã chọn màu')}
+                    style={{ backgroundColor: color, borderColor: editProjectData.color === color ? '#000' : 'transparent' }}
+                    onClick={() => setEditProjectData(prev => ({ ...prev, color }))}
                   />
                 ))}
               </div>
@@ -806,10 +903,7 @@ export default function ProjectDetailPage() {
             <Button variant="outline" onClick={() => setIsEditProjectOpen(false)}>
               Hủy
             </Button>
-            <Button onClick={() => {
-              toast.success('Đã cập nhật dự án')
-              setIsEditProjectOpen(false)
-            }}>
+            <Button onClick={handleUpdateProject}>
               Lưu thay đổi
             </Button>
           </DialogFooter>
@@ -900,7 +994,7 @@ export default function ProjectDetailPage() {
                 <h4 className="font-medium mb-3">Người thực hiện</h4>
                 <div className="space-y-2">
                   {project.members.map((memberId) => {
-                    const member = mockUsers.find((u) => u.id === memberId)
+                    const member = allUsers.find((u: User) => u.id === memberId)
                     if (!member) return null
                     return (
                       <div key={member.id} className="flex items-center gap-2">
@@ -990,9 +1084,9 @@ export default function ProjectDetailPage() {
               <div className="space-y-2">
                 <Label>Chọn thành viên</Label>
                 <div className="border rounded-md p-3 max-h-[300px] overflow-y-auto space-y-2">
-                  {mockUsers
-                    .filter(u => !project.members.includes(u.id))
-                    .map((user) => (
+                  {allUsers
+                    .filter((u: User) => !project.members.includes(u.id))
+                    .map((user: User) => (
                       <div key={user.id} className="flex items-center gap-2">
                         <Checkbox
                           id={`invite-${user.id}`}
@@ -1017,7 +1111,7 @@ export default function ProjectDetailPage() {
                         </Label>
                       </div>
                     ))}
-                  {mockUsers.filter(u => !project.members.includes(u.id)).length === 0 && (
+                  {allUsers.filter((u: User) => !project.members.includes(u.id)).length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Tất cả người dùng đã là thành viên
                     </p>

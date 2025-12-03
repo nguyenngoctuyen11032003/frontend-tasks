@@ -248,13 +248,14 @@ export interface Project {
   name: string
   description: string
   progress: number
-  members: string[] // Array of user IDs
-  deadline: string
+  members: any[] // Array of member objects
+  deadline?: string
   tags: Tag[]
   status: "active" | "completed" | "archived" | "on-hold"
   color: string
   startDate?: string
   endDate?: string
+  createdBy?: any
   createdAt: string
   updatedAt: string
 }
@@ -278,15 +279,19 @@ export interface Task {
   priority: TaskPriority
   assignees: User[]
   assignedBy?: User // Person who assigned the task
+  createdBy?: User // Person who created the task
   projectId: string
+  project?: Project // Full project object (populated from API)
   dueDate: string
   reminders?: TaskReminder[] // Task reminders
+  comments?: Comment[] // Task comments
   createdAt: string
   updatedAt: string
   commentsCount: number
   estimatedHours: number
   tags: Tag[]
   checklist: ChecklistItem[]
+  checklistItems?: ChecklistItem[] // Alias for checklist
   attachments: Attachment[]
 }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CalendarIcon, Plus, X } from "lucide-react"
+import { CalendarIcon, Plus, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,34 +20,84 @@ import { Calendar } from "@/components/ui/calendar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatDate } from "@/lib/utils"
-import { mockUsers, mockProjects, mockTags } from "@/mocks/data"
-import type { TaskStatus, TaskPriority } from "@/types"
+import type { TaskStatus, TaskPriority, Task, User, Tag } from "@/types"
 import { toast } from "sonner"
+import { useTasksStore } from "@/stores/tasks-store"
+import { useProjectsStore } from "@/stores/projects-store"
+import { useAuthStore } from "@/stores/auth-store"
+import { UsersService } from "@/services/users.service"
+import { TagsService } from "@/services/tags.service"
 
 interface TaskCreateModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultStatus?: TaskStatus
   onSuccess?: () => void
-  editTask?: any // Task to edit if in edit mode
+  editTask?: Task | null // Task to edit if in edit mode
   mode?: "create" | "edit"
+  defaultProjectId?: string // Default project ID for creating task from project detail page
 }
 
-export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", onSuccess, editTask, mode = "create" }: TaskCreateModalProps) {
+export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", onSuccess, editTask, mode = "create", defaultProjectId }: TaskCreateModalProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [title, setTitle] = useState(editTask?.title || "")
-  const [description, setDescription] = useState(editTask?.description || "")
-  const [status, setStatus] = useState<TaskStatus>(editTask?.status || defaultStatus)
-  const [priority, setPriority] = useState<TaskPriority>(editTask?.priority || "medium")
-  const [projectId, setProjectId] = useState(editTask?.projectId || "")
-  const [dueDate, setDueDate] = useState<Date | undefined>(editTask?.dueDate ? new Date(editTask.dueDate) : undefined)
-  const [estimatedHours, setEstimatedHours] = useState(editTask?.estimatedHours?.toString() || "")
-  const [selectedAssignees, setSelectedAssignees] = useState<string[]>(editTask?.assignees || [])
-  const [selectedTags, setSelectedTags] = useState<string[]>(editTask?.tags || [])
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [status, setStatus] = useState<TaskStatus>(defaultStatus)
+  const [priority, setPriority] = useState<TaskPriority>("medium")
+  const [projectId, setProjectId] = useState("")
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined)
+  const [estimatedHours, setEstimatedHours] = useState("")
+  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  // Data from services
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [allTags, setAllTags] = useState<Tag[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [loadingTags, setLoadingTags] = useState(false)
+
+  // Get stores
+  const { createTask, updateTask } = useTasksStore()
+  const { projects } = useProjectsStore()
+  const { user: currentUser } = useAuthStore()
+
+  // Fetch users and tags when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchUsers()
+      fetchTags()
+    }
+  }, [open])
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      const result = await UsersService.getUsers({ limit: 100 })
+      setAllUsers(result.data)
+    } catch (error) {
+      console.error("Failed to fetch users:", error)
+      toast.error("Không thể tải danh sách người dùng")
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  const fetchTags = async () => {
+    setLoadingTags(true)
+    try {
+      const tags = await TagsService.getTags()
+      setAllTags(tags)
+    } catch (error) {
+      console.error("Failed to fetch tags:", error)
+      toast.error("Không thể tải danh sách tag")
+    } finally {
+      setLoadingTags(false)
+    }
+  }
 
   // Sync form with editTask when it changes
   useEffect(() => {
-    if (editTask && mode === "edit") {
+    if (editTask && mode === "edit" && open) {
       setTitle(editTask.title || "")
       setDescription(editTask.description || "")
       setStatus(editTask.status || defaultStatus)
@@ -55,12 +105,19 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
       setProjectId(editTask.projectId || "")
       setDueDate(editTask.dueDate ? new Date(editTask.dueDate) : undefined)
       setEstimatedHours(editTask.estimatedHours?.toString() || "")
-      setSelectedAssignees(editTask.assignees || [])
-      setSelectedTags(editTask.tags || [])
+      setSelectedAssignees(editTask.assignees?.map((a) => a.id) || [])
+      setSelectedTags(editTask.tags?.map((t) => t.id) || [])
+    } else if (mode === "create" && open) {
+      resetForm()
+      // Set default project if provided
+      if (defaultProjectId) {
+        setProjectId(defaultProjectId)
+      }
     }
-  }, [editTask, mode, defaultStatus])
+  }, [editTask, mode, defaultStatus, open, defaultProjectId])
 
-  const getInitials = (name: string) => {
+  const getInitials = (name?: string | null) => {
+    if (!name) return "??"
     return name
       .split(" ")
       .map((n) => n[0])
@@ -78,6 +135,7 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
   }
 
   const handleSubmit = async () => {
+    // Validation
     if (!title.trim()) {
       toast.error("Vui lòng nhập tiêu đề công việc")
       return
@@ -89,18 +147,69 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
 
     setIsLoading(true)
     try {
-      // In a real app, this would call an API
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      if (mode === "edit") {
+      if (mode === "edit" && editTask) {
+        // Update existing task
+        const updateData: any = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          status,
+          priority,
+          dueDate: dueDate?.toISOString() || undefined,
+          estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
+          projectId,
+        }
+
+        // Add assignees if changed
+        if (selectedAssignees.length > 0) {
+          updateData.assigneeIds = selectedAssignees
+        }
+
+        // Add tags if changed
+        if (selectedTags.length > 0) {
+          updateData.tagIds = selectedTags
+        }
+
+        await updateTask(editTask.id, updateData)
         toast.success("Đã cập nhật công việc")
       } else {
+        // Create new task
+        if (!currentUser) {
+          toast.error("Bạn cần đăng nhập để tạo công việc")
+          return
+        }
+
+        const taskData: any = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          status,
+          priority,
+          dueDate: dueDate?.toISOString() || undefined,
+          estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
+          projectId,
+          assignedById: currentUser.id,
+        }
+
+        // Add assignees if selected
+        if (selectedAssignees.length > 0) {
+          taskData.assigneeIds = selectedAssignees
+        }
+
+        // Add tags if selected
+        if (selectedTags.length > 0) {
+          taskData.tagIds = selectedTags
+        }
+
+        await createTask(taskData)
         toast.success("Đã tạo công việc mới")
       }
+      
       resetForm()
       onOpenChange(false)
       onSuccess?.()
-    } catch (error) {
-      toast.error(mode === "edit" ? "Có lỗi xảy ra khi cập nhật công việc" : "Có lỗi xảy ra khi tạo công việc")
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 
+        (mode === "edit" ? "Có lỗi xảy ra khi cập nhật công việc" : "Có lỗi xảy ra khi tạo công việc")
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -165,7 +274,7 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
                   <SelectValue placeholder="Chọn dự án" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockProjects.map((project) => (
+                  {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       <div className="flex items-center gap-2">
                         <div className="h-3 w-3 rounded-full" style={{ backgroundColor: project.color }} />
@@ -243,42 +352,48 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
           {/* Assignees */}
           <div className="space-y-2">
             <Label>Người thực hiện</Label>
-            <div className="flex flex-wrap gap-2 p-3 border rounded-lg min-h-[60px]">
-              {selectedAssignees.map((userId) => {
-                const user = mockUsers.find((u) => u.id === userId)
-                if (!user) return null
-                return (
-                  <Badge key={userId} variant="secondary" className="flex items-center gap-1 pr-1">
-                    <Avatar className="h-5 w-5">
-                      <AvatarImage src={user.avatarUrl || "/placeholder.svg"} />
-                      <AvatarFallback className="text-[10px]">{getInitials(user.name)}</AvatarFallback>
-                    </Avatar>
-                    {user.name}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-4 w-4 ml-1 hover:bg-destructive/20"
-                      onClick={() => toggleAssignee(userId)}
-                    >
-                      <X className="h-3 w-3" />
+            {loadingUsers ? (
+              <div className="flex items-center justify-center p-3 border rounded-lg min-h-[60px]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="ml-2 text-sm text-muted-foreground">Đang tải...</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 p-3 border rounded-lg min-h-[60px]">
+                {selectedAssignees.map((userId) => {
+                  const user = allUsers.find((u) => u.id === userId)
+                  if (!user) return null
+                  return (
+                    <Badge key={userId} variant="secondary" className="flex items-center gap-1 pr-1">
+                      <Avatar className="h-5 w-5">
+                        <AvatarImage src={user.avatarUrl || "/placeholder.svg"} />
+                        <AvatarFallback className="text-[10px]">{getInitials(user.name)}</AvatarFallback>
+                      </Avatar>
+                      {user.name}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 ml-1 hover:bg-destructive/20"
+                        onClick={() => toggleAssignee(userId)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  )
+                })}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 bg-transparent">
+                      <Plus className="h-3 w-3 mr-1" />
+                      Thêm
                     </Button>
-                  </Badge>
-                )
-              })}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 bg-transparent">
-                    <Plus className="h-3 w-3 mr-1" />
-                    Thêm
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="start">
-                  <div className="space-y-1">
-                    {mockUsers
-                      .filter((u) => !selectedAssignees.includes(u.id))
-                      .map((user) => (
-                        <button
-                          key={user.id}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="space-y-1">
+                      {allUsers
+                        .filter((u) => !selectedAssignees.includes(u.id))
+                        .map((user) => (
+                          <button
+                            key={user.id}
                           onClick={() => toggleAssignee(user.id)}
                           className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-accent text-left"
                         >
@@ -292,32 +407,42 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
                           </div>
                         </button>
                       ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
           </div>
 
           {/* Tags */}
           <div className="space-y-2">
             <Label>Nhãn</Label>
-            <div className="flex flex-wrap gap-2">
-              {mockTags.map((tag) => (
-                <Badge
-                  key={tag.id}
-                  variant={selectedTags.includes(tag.id) ? "default" : "outline"}
-                  className="cursor-pointer"
-                  style={{
-                    borderColor: tag.color,
-                    backgroundColor: selectedTags.includes(tag.id) ? tag.color : "transparent",
-                    color: selectedTags.includes(tag.id) ? "white" : tag.color,
-                  }}
-                  onClick={() => toggleTag(tag.id)}
-                >
-                  {tag.name}
-                </Badge>
-              ))}
-            </div>
+            {loadingTags ? (
+              <div className="flex items-center justify-center p-3 border rounded-lg min-h-[60px]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="ml-2 text-sm text-muted-foreground">Đang tải...</span>
+              </div>
+            ) : allTags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allTags.map((tag) => (
+                  <Badge
+                    key={tag.id}
+                    variant={selectedTags.includes(tag.id) ? "default" : "outline"}
+                    className="cursor-pointer"
+                    style={{
+                      borderColor: tag.color,
+                      backgroundColor: selectedTags.includes(tag.id) ? tag.color : "transparent",
+                      color: selectedTags.includes(tag.id) ? "white" : tag.color,
+                    }}
+                    onClick={() => toggleTag(tag.id)}
+                  >
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground p-3 border rounded-lg">Chưa có tag nào</p>
+            )}
           </div>
         </div>
 

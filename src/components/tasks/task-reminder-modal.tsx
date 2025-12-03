@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Bell, Calendar, Plus, X, Trash2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Bell, Calendar, Plus, X, Trash2, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
+import { useTasksStore } from "@/stores/tasks-store"
 import type { Task, TaskReminder } from "@/types"
 
 interface TaskReminderModalProps {
@@ -20,10 +21,21 @@ interface TaskReminderModalProps {
 }
 
 export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModalProps) {
-  const [reminders, setReminders] = useState<TaskReminder[]>(task.reminders || [])
+  const [reminders, setReminders] = useState<TaskReminder[]>([])
   const [reminderDate, setReminderDate] = useState("")
   const [reminderTime, setReminderTime] = useState("09:00")
   const [reminderMessage, setReminderMessage] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [addingReminder, setAddingReminder] = useState(false)
+
+  const { addReminder, removeReminder, fetchTask } = useTasksStore()
+
+  // Fetch reminders when dialog opens
+  useEffect(() => {
+    if (open && task) {
+      setReminders(task.reminders || [])
+    }
+  }, [open, task])
 
   const getInitials = (name: string) => {
     return name
@@ -34,7 +46,7 @@ export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModa
       .slice(0, 2)
   }
 
-  const handleAddReminder = () => {
+  const handleAddReminder = async () => {
     if (!reminderDate || !reminderMessage.trim()) {
       toast.error("Vui lòng nhập đầy đủ thông tin nhắc nhở")
       return
@@ -46,30 +58,39 @@ export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModa
       return
     }
 
-    const newReminder: TaskReminder = {
-      id: `reminder-${Date.now()}`,
-      taskId: task.id,
-      reminderDate: reminderDateTime.toISOString(),
-      message: reminderMessage,
-      isActive: true,
-      createdBy: task.assignedBy || task.assignees[0],
-      createdAt: new Date().toISOString(),
+    setAddingReminder(true)
+    try {
+      await addReminder(task.id, {
+        reminderDate: reminderDateTime.toISOString(),
+        message: reminderMessage,
+      })
+      
+      // Refresh task to get updated reminders
+      const updatedTask = await fetchTask(task.id)
+      setReminders(updatedTask.reminders || [])
+      
+      setReminderDate("")
+      setReminderTime("09:00")
+      setReminderMessage("")
+      toast.success("Đã thêm lời nhắc thành công")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể thêm lời nhắc")
+    } finally {
+      setAddingReminder(false)
     }
-
-    setReminders([...reminders, newReminder])
-    setReminderDate("")
-    setReminderTime("09:00")
-    setReminderMessage("")
-    toast.success("Đã thêm lời nhắc thành công")
   }
 
-  const handleDeleteReminder = (reminderId: string) => {
-    setReminders(reminders.filter((r) => r.id !== reminderId))
-    toast.success("Đã xóa lời nhắc")
+  const handleDeleteReminder = async (reminderId: string) => {
+    try {
+      await removeReminder(task.id, reminderId)
+      setReminders(reminders.filter((r) => r.id !== reminderId))
+      toast.success("Đã xóa lời nhắc")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa lời nhắc")
+    }
   }
 
   const handleSave = () => {
-    // In real app, save to backend
     toast.success("Đã lưu các lời nhắc")
     onOpenChange(false)
   }
@@ -158,9 +179,18 @@ export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModa
                     className="resize-none"
                   />
                 </div>
-                <Button onClick={handleAddReminder} className="w-full">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Thêm lời nhắc
+                <Button onClick={handleAddReminder} className="w-full" disabled={addingReminder}>
+                  {addingReminder ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang thêm...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Thêm lời nhắc
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

@@ -34,12 +34,14 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
   )
 
   const checklistProgress = useMemo(() => {
-    const completed = task.checklist.filter((c) => c.completed).length
-    const total = task.checklist.length
+    const checklist = task.checklistItems || task.checklist || []
+    const completed = checklist.filter((c) => c.completed).length
+    const total = checklist.length
     return { completed, total, percentage: total > 0 ? (completed / total) * 100 : 0 }
-  }, [task.checklist])
+  }, [task.checklistItems, task.checklist])
 
-  const getInitials = (name: string) => {
+  const getInitials = (name?: string | null) => {
+    if (!name) return "??"
     return name
       .split(" ")
       .map((n) => n[0])
@@ -61,7 +63,7 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
       )}
     >
       {/* Tags */}
-      {task.tags.length > 0 && (
+      {task.tags && task.tags.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {task.tags.slice(0, 2).map((tag) => (
             <span
@@ -92,7 +94,7 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
       </div>
 
       {/* Checklist progress */}
-      {task.checklist.length > 0 && (
+      {checklistProgress.total > 0 && (
         <div className="mb-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span>Tiến độ</span>
@@ -115,13 +117,13 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
       <div className="flex items-center justify-between">
         {/* Assignees */}
         <div className="flex -space-x-2">
-          {task.assignees.slice(0, 3).map((assignee) => (
+          {task.assignees && task.assignees.slice(0, 3).map((assignee) => (
             <Avatar key={assignee.id} className="h-7 w-7 border-2 border-card">
               <AvatarImage src={assignee.avatarUrl || "/placeholder.svg"} alt={assignee.name} />
               <AvatarFallback className="text-xs">{getInitials(assignee.name)}</AvatarFallback>
             </Avatar>
           ))}
-          {task.assignees.length > 3 && (
+          {task.assignees && task.assignees.length > 3 && (
             <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-muted text-xs font-medium">
               +{task.assignees.length - 3}
             </div>
@@ -136,7 +138,7 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
               {task.commentsCount}
             </span>
           )}
-          {task.attachments.length > 0 && (
+          {task.attachments && task.attachments.length > 0 && (
             <span className="flex items-center gap-1">
               <Paperclip className="h-3.5 w-3.5" />
               {task.attachments.length}

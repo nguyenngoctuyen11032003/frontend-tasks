@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   Calendar,
   Clock,
   MessageSquare,
   Paperclip,
-  User,
+  User as UserIcon,
   Tag,
   CheckSquare,
   MoreHorizontal,
@@ -39,10 +39,16 @@ import { TaskReminderModal } from "@/components/tasks/task-reminder-modal"
 import { FileUploadDialog } from "@/components/upload"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import type { Task } from "@/types"
-import { mockUsers } from "@/mocks/data"
+import type { Task, User } from "@/types"
 import { toast } from "sonner"
 import { RichEditor } from "@/components/editor/rich-editor"
+import { useTasksStore } from "@/stores/tasks-store"
+import { useAuthStore } from "@/stores/auth-store"
+import { UsersService } from "@/services/users.service"
+import { CommentsService } from "@/services/comments.service"
+import { UploadService } from "@/services/upload.service"
+import { ActivityLogsService } from "@/services/activity-logs.service"
+import type { Comment, Attachment, ActivityLog } from "@/types"
 
 interface TaskDetailDialogProps {
   task: Task | null
@@ -60,15 +66,118 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isEditingDescription, setIsEditingDescription] = useState(false)
   const [descriptionContent, setDescriptionContent] = useState(task?.description || "")
-  const [checklistItems, setChecklistItems] = useState(task?.checklist || [])
-  const [tempChecklistItems, setTempChecklistItems] = useState(task?.checklist || [])
+  const [checklistItems, setChecklistItems] = useState(task?.checklistItems || [])
+  const [tempChecklistItems, setTempChecklistItems] = useState(task?.checklistItems || [])
   const [newChecklistItem, setNewChecklistItem] = useState("")
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null)
   const [editingChecklistText, setEditingChecklistText] = useState("")
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [loadingAttachments, setLoadingAttachments] = useState(false)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
+  const [loadingActivityLogs, setLoadingActivityLogs] = useState(false)
+
+  // Get stores
+  const {
+    selectedTask,
+    fetchTask,
+    updateTask,
+    deleteTask,
+    assignUser,
+    removeAssignee,
+    addChecklistItem,
+    updateChecklistItem,
+    removeChecklistItem,
+    addComment,
+  } = useTasksStore()
+  const { user: currentUser } = useAuthStore()
+
+  // Fetch users, comments, attachments, and activity logs when dialog opens
+  useEffect(() => {
+    if (open && task) {
+      fetchUsers()
+      fetchComments()
+      fetchAttachments()
+      fetchActivityLogs()
+    }
+  }, [open, task?.id])
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      const result = await UsersService.getUsers({ limit: 100 })
+      setAllUsers(result.data)
+    } catch (error) {
+      console.error("Failed to fetch users:", error)
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  const fetchComments = async () => {
+    if (!task) return
+    setLoadingComments(true)
+    try {
+      const result = await CommentsService.getComments(task.id)
+      setComments(result)
+    } catch (error) {
+      console.error("Failed to fetch comments:", error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  const fetchAttachments = async () => {
+    if (!task) return
+    setLoadingAttachments(true)
+    try {
+      // Task already has attachments in the response, but we can fetch fresh if needed
+      setAttachments(task.attachments || [])
+    } catch (error) {
+      console.error("Failed to fetch attachments:", error)
+    } finally {
+      setLoadingAttachments(false)
+    }
+  }
+
+  const fetchActivityLogs = async () => {
+    if (!task) return
+    setLoadingActivityLogs(true)
+    try {
+      const logs = await ActivityLogsService.getTaskActivityLogs(task.id, 50)
+      setActivityLogs(logs)
+    } catch (error) {
+      console.error("Failed to fetch activity logs:", error)
+    } finally {
+      setLoadingActivityLogs(false)
+    }
+  }
+
+  // Fetch full task details when dialog opens
+  useEffect(() => {
+    if (open && task?.id) {
+      fetchTask(task.id).catch((err) => {
+        console.error("Failed to fetch task details:", err)
+      })
+    }
+  }, [open, task?.id, fetchTask])
+
+  // Update local state when task changes
+  useEffect(() => {
+    if (selectedTask && selectedTask.id === task?.id) {
+      setDescriptionContent(selectedTask.description || "")
+      setChecklistItems(selectedTask.checklistItems || [])
+      setTempChecklistItems(selectedTask.checklistItems || [])
+    }
+  }, [selectedTask, task?.id])
 
   if (!task) return null
 
-  const getInitials = (name: string) => {
+  const getInitials = (name?: string | null) => {
+    if (!name) return "??"
     return name
       .split(" ")
       .map((n) => n[0])
@@ -100,22 +209,27 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
   const totalChecklist = displayChecklist.length
   const checklistProgress = totalChecklist > 0 ? (completedChecklist / totalChecklist) * 100 : 0
 
-  const handleAddChecklistItem = () => {
-    if (!newChecklistItem.trim()) return
-    const newItem = {
-      id: `checklist-${Date.now()}`,
-      title: newChecklistItem,
-      completed: false
+  const handleAddChecklistItem = async () => {
+    if (!newChecklistItem.trim() || !task) return
+    
+    try {
+      await addChecklistItem(task.id, { title: newChecklistItem.trim() })
+      setNewChecklistItem("")
+      toast.success("Đã thêm mục checklist")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể thêm mục checklist")
     }
-    setTempChecklistItems([...tempChecklistItems, newItem])
-    setNewChecklistItem("")
   }
 
-  const handleToggleChecklistItem = (id: string) => {
-    if (isEditingDescription) {
-      setTempChecklistItems(tempChecklistItems.map(item =>
-        item.id === id ? { ...item, completed: !item.completed } : item
-      ))
+  const handleToggleChecklistItem = async (id: string) => {
+    if (!task) return
+    const item = checklistItems.find(i => i.id === id)
+    if (!item) return
+
+    try {
+      await updateChecklistItem(task.id, id, { completed: !item.completed })
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể cập nhật mục checklist")
     }
   }
 
@@ -124,24 +238,40 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
     setEditingChecklistText(title)
   }
 
-  const handleSaveEditChecklistItem = () => {
-    if (!editingChecklistText.trim() || !editingChecklistId) return
-    setTempChecklistItems(tempChecklistItems.map(item =>
-      item.id === editingChecklistId ? { ...item, title: editingChecklistText } : item
-    ))
-    setEditingChecklistId(null)
-    setEditingChecklistText("")
+  const handleSaveEditChecklistItem = async () => {
+    if (!editingChecklistText.trim() || !editingChecklistId || !task) return
+
+    try {
+      await updateChecklistItem(task.id, editingChecklistId, { title: editingChecklistText.trim() })
+      setEditingChecklistId(null)
+      setEditingChecklistText("")
+      toast.success("Đã cập nhật mục checklist")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể cập nhật mục checklist")
+    }
   }
 
-  const handleDeleteChecklistItem = (id: string) => {
-    setTempChecklistItems(tempChecklistItems.filter(item => item.id !== id))
+  const handleDeleteChecklistItem = async (id: string) => {
+    if (!task) return
+
+    try {
+      await removeChecklistItem(task.id, id)
+      toast.success("Đã xóa mục checklist")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa mục checklist")
+    }
   }
 
-  const handleSaveDescriptionAndChecklist = () => {
-    // Save both description and checklist
-    setChecklistItems(tempChecklistItems)
-    setIsEditingDescription(false)
-    toast.success("Đã lưu mô tả và checklist")
+  const handleSaveDescriptionAndChecklist = async () => {
+    if (!task) return
+
+    try {
+      await updateTask(task.id, { description: descriptionContent })
+      setIsEditingDescription(false)
+      toast.success("Đã lưu mô tả")
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể lưu mô tả")
+    }
   }
 
   const handleCancelEdit = () => {
@@ -164,12 +294,17 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
     }
   }
 
-  const handleDelete = () => {
-    if (onDelete && task) {
-      onDelete(task.id)
+  const handleDelete = async () => {
+    if (!task) return
+
+    try {
+      await deleteTask(task.id)
       setIsDeleteDialogOpen(false)
       onOpenChange(false)
       toast.success("Đã xóa công việc thành công")
+      if (onDelete) onDelete(task.id)
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa công việc")
     }
   }
 
@@ -185,8 +320,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                   <DialogDescription className="mt-2">
                     Trong dự án{" "}
                     <span className="font-medium">
-                      {/* Project name would come from project lookup */}
-                      Dự án #{task.projectId.split("-")[1]}
+                      {task.project?.name || `Dự án #${task.projectId?.split("-")[1] || task.projectId}`}
                     </span>
                   </DialogDescription>
                 </div>
@@ -222,7 +356,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                       content={descriptionContent}
                       onChange={setDescriptionContent}
                       placeholder="Nhập mô tả công việc..."
-                      users={mockUsers}
+                      users={allUsers}
                     />
                   ) : (
                     <div 
@@ -257,9 +391,8 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                           checked={item.completed}
                           onChange={() => handleToggleChecklistItem(item.id)}
                           className="h-4 w-4 rounded cursor-pointer"
-                          disabled={!isEditingDescription}
                         />
-                        {isEditingDescription && editingChecklistId === item.id ? (
+                        {editingChecklistId === item.id ? (
                           <div className="flex-1 flex gap-2">
                             <Input
                               value={editingChecklistText}
@@ -289,71 +422,67 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                             <span className={cn("text-sm flex-1", item.completed && "line-through text-muted-foreground")}>
                               {item.title}
                             </span>
-                            {isEditingDescription && (
-                              <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6"
-                                  onClick={() => handleStartEditChecklistItem(item.id, item.title)}
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6 text-red-600 hover:text-red-700"
-                                  onClick={() => handleDeleteChecklistItem(item.id)}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            )}
+                            <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => handleStartEditChecklistItem(item.id, item.title)}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-red-600 hover:text-red-700"
+                                onClick={() => handleDeleteChecklistItem(item.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </>
                         )}
                       </div>
                     ))}
                   </div>
-                  {/* Add New Checklist Item - Only in Edit Mode */}
+                  {/* Add New Checklist Item */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Thêm mục mới..."
+                      value={newChecklistItem}
+                      onChange={(e) => setNewChecklistItem(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAddChecklistItem()
+                      }}
+                      className="h-9 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAddChecklistItem}
+                      disabled={!newChecklistItem.trim()}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Thêm
+                    </Button>
+                  </div>
+                  
+                  {/* Save/Cancel Buttons for Description - Only in Edit Mode */}
                   {isEditingDescription && (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Thêm mục mới..."
-                          value={newChecklistItem}
-                          onChange={(e) => setNewChecklistItem(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleAddChecklistItem()
-                          }}
-                          className="h-9 text-sm"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={handleAddChecklistItem}
-                          disabled={!newChecklistItem.trim()}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Thêm
-                        </Button>
-                      </div>
-                      
-                      {/* Save/Cancel Buttons for Description + Checklist */}
-                      <div className="flex gap-2 justify-end pt-2 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleCancelEdit}
-                        >
-                          Hủy
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={handleSaveDescriptionAndChecklist}
-                        >
-                          <Save className="h-3 w-3 mr-1" />
-                          Lưu thay đổi
-                        </Button>
-                      </div>
+                    <div className="flex gap-2 justify-end pt-2 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCancelEdit}
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveDescriptionAndChecklist}
+                      >
+                        <Save className="h-3 w-3 mr-1" />
+                        Lưu thay đổi
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -373,41 +502,130 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value="activity" className="space-y-4">
-                    <div className="space-y-3">
-                      {[
-                        { action: "đã tạo công việc", time: task.createdAt },
-                        { action: "đã cập nhật trạng thái", time: task.updatedAt },
-                      ].map((activity, i) => (
-                        <div key={i} className="flex gap-3">
-                          <div className="mt-1">
-                            <div className="h-2 w-2 rounded-full bg-primary" />
+                    {loadingActivityLogs ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        Đang tải...
+                      </div>
+                    ) : activityLogs.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        Chưa có hoạt động nào
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {activityLogs.map((log) => (
+                          <div key={log.id} className="flex gap-3">
+                            <Avatar className="h-8 w-8 flex-shrink-0">
+                              <AvatarImage src={log.user?.avatarUrl || "/placeholder.svg"} />
+                              <AvatarFallback>{getInitials(log.user?.name || "U")}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm">
+                                <span className="font-medium">{log.user?.name}</span>{" "}
+                                {ActivityLogsService.formatAction(log.action)}{" "}
+                                {ActivityLogsService.formatEntityType(log.entityType)}
+                                {log.metadata?.oldValue && log.metadata?.newValue && (
+                                  <span className="text-muted-foreground">
+                                    {" "}
+                                    từ <span className="font-medium">{log.metadata.oldValue}</span> thành{" "}
+                                    <span className="font-medium">{log.metadata.newValue}</span>
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</p>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <p className="text-sm">
-                              <span className="font-medium">{task.assignees[0]?.name || "Người dùng"}</span>{" "}
-                              {activity.action}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{formatDateTime(activity.time)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </TabsContent>
                   <TabsContent value="comments" className="space-y-4">
                     <div className="space-y-4">
+                      {/* New Comment Form */}
                       <div className="flex gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={task.assignees[0]?.avatarUrl || "/placeholder.svg"} />
-                          <AvatarFallback>{getInitials(task.assignees[0]?.name || "U")}</AvatarFallback>
+                          <AvatarImage src={currentUser?.avatarUrl || "/placeholder.svg"} />
+                          <AvatarFallback>{getInitials(currentUser?.name || "U")}</AvatarFallback>
                         </Avatar>
-                        <Textarea
-                          placeholder="Viết bình luận..."
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          className="flex-1"
-                        />
+                        <div className="flex-1 space-y-2">
+                          <Textarea
+                            placeholder="Viết bình luận..."
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            className="min-h-[80px]"
+                          />
+                          <Button 
+                            onClick={async () => {
+                              if (!comment.trim() || !task) return
+                              try {
+                                await CommentsService.createComment(task.id, { content: comment.trim() })
+                                setComment("")
+                                toast.success("Đã gửi bình luận")
+                                fetchComments()
+                              } catch (error: any) {
+                                toast.error(error?.message || "Không thể gửi bình luận")
+                              }
+                            }}
+                            disabled={!comment.trim()}
+                          >
+                            Gửi bình luận
+                          </Button>
+                        </div>
                       </div>
-                      <Button>Gửi bình luận</Button>
+
+                      <Separator />
+
+                      {/* Comments List */}
+                      {loadingComments ? (
+                        <div className="text-center py-8 text-sm text-muted-foreground">
+                          Đang tải bình luận...
+                        </div>
+                      ) : comments.length === 0 ? (
+                        <div className="text-center py-8 text-sm text-muted-foreground">
+                          Chưa có bình luận nào
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {comments.map((c) => (
+                            <div key={c.id} className="flex gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={c.author?.avatarUrl || "/placeholder.svg"} />
+                                <AvatarFallback>{getInitials(c.author?.name || "U")}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-sm">{c.author?.name}</span>
+                                  <span className="text-xs text-muted-foreground">{formatDateTime(c.createdAt)}</span>
+                                </div>
+                                <p className="text-sm">{c.content}</p>
+                                {currentUser?.id === c.author?.id && (
+                                  <div className="flex gap-2 mt-2">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="h-7 text-xs"
+                                      onClick={async () => {
+                                        if (!task) return
+                                        const confirmed = window.confirm("Xóa bình luận này?")
+                                        if (!confirmed) return
+                                        try {
+                                          await CommentsService.deleteComment(task.id, c.id)
+                                          toast.success("Đã xóa bình luận")
+                                          fetchComments()
+                                        } catch (error: any) {
+                                          toast.error(error?.message || "Không thể xóa bình luận")
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="h-3 w-3 mr-1" />
+                                      Xóa
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
 
@@ -428,33 +646,71 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                         description="Tải lên tài liệu, hình ảnh hoặc file liên quan"
                         maxSize={10}
                         maxFiles={5}
-                        onUploadComplete={(files) => {
-                          toast.success("Đã tải lên", {
-                            description: `${files.length} file đã được đính kèm`,
-                          })
+                        onUploadComplete={async (files) => {
+                          if (!task) return
+                          try {
+                            await UploadService.uploadMultipleFiles(files, "task", task.id)
+                            toast.success("Đã tải lên", {
+                              description: `${files.length} file đã được đính kèm`,
+                            })
+                            // Refresh task to get updated attachments
+                            await fetchTask(task.id)
+                            fetchAttachments()
+                          } catch (error: any) {
+                            toast.error(error?.message || "Không thể tải file lên")
+                          }
                         }}
                       />
 
                       {/* Attached Files */}
                       <div className="space-y-2">
                         <h4 className="text-sm font-medium">Files đính kèm</h4>
-                        {task.attachments && task.attachments.length > 0 ? (
-                          task.attachments.map((file, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
+                        {loadingAttachments ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">
+                            Đang tải...
+                          </div>
+                        ) : attachments && attachments.length > 0 ? (
+                          attachments.map((file) => (
+                            <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors">
                               <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded bg-primary/10 flex items-center justify-center">
                                   <Paperclip className="h-5 w-5 text-primary" />
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium">{file.name}</p>
-                                  <p className="text-xs text-muted-foreground">{file.size}</p>
+                                  <p className="text-sm font-medium">{file.originalName || file.filename}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {file.size ? `${(file.size / 1024).toFixed(2)} KB` : "Unknown size"}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    const url = UploadService.getDownloadUrl(file.path)
+                                    window.open(url, "_blank")
+                                  }}
+                                >
                                   <Download className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={async () => {
+                                    const confirmed = window.confirm(`Xóa file ${file.originalName || file.filename}?`)
+                                    if (!confirmed) return
+                                    try {
+                                      await UploadService.deleteFile(file.id)
+                                      toast.success("Đã xóa file")
+                                      fetchAttachments()
+                                    } catch (error: any) {
+                                      toast.error(error?.message || "Không thể xóa file")
+                                    }
+                                  }}
+                                >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -505,7 +761,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <User className="h-4 w-4" />
+                      <UserIcon className="h-4 w-4" />
                       Người thực hiện
                     </h4>
                     <Button 
@@ -525,10 +781,15 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                         value={assigneeSearch}
                         onChange={(e) => setAssigneeSearch(e.target.value)}
                         className="h-8"
+                        disabled={loadingUsers}
                       />
                       <ScrollArea className="h-32">
                         <div className="space-y-1">
-                          {mockUsers
+                          {loadingUsers ? (
+                            <div className="text-center py-4 text-sm text-muted-foreground">
+                              Đang tải...
+                            </div>
+                          ) : allUsers
                             .filter(u => 
                               u.name.toLowerCase().includes(assigneeSearch.toLowerCase()) &&
                               !task.assignees.some(a => a.id === u.id)
@@ -536,10 +797,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                             .map((user) => (
                               <button
                                 key={user.id}
-                                onClick={() => {
-                                  toast.success(`Đã thêm ${user.name}`)
-                                  setIsAddingAssignee(false)
-                                  setAssigneeSearch("")
+                                onClick={async () => {
+                                  if (!task) return
+                                  try {
+                                    await assignUser(task.id, user.id)
+                                    toast.success(`Đã thêm ${user.name}`)
+                                    setIsAddingAssignee(false)
+                                    setAssigneeSearch("")
+                                  } catch (error: any) {
+                                    toast.error(error?.message || `Không thể thêm ${user.name}`)
+                                  }
                                 }}
                                 className="w-full flex items-center gap-2 p-2 rounded hover:bg-accent text-left"
                               >
@@ -550,6 +817,14 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                 <span className="text-sm">{user.name}</span>
                               </button>
                             ))}
+                          {!loadingUsers && allUsers.filter(u => 
+                            u.name.toLowerCase().includes(assigneeSearch.toLowerCase()) &&
+                            !task.assignees.some(a => a.id === u.id)
+                          ).length === 0 && (
+                            <div className="text-center py-4 text-sm text-muted-foreground">
+                              Không tìm thấy người dùng
+                            </div>
+                          )}
                         </div>
                       </ScrollArea>
                     </div>
@@ -572,7 +847,15 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                           variant="ghost" 
                           size="icon" 
                           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => toast.success(`Đã xóa ${assignee.name}`)}
+                          onClick={async () => {
+                            if (!task) return
+                            try {
+                              await removeAssignee(task.id, assignee.id)
+                              toast.success(`Đã xóa ${assignee.name}`)
+                            } catch (error: any) {
+                              toast.error(error?.message || `Không thể xóa ${assignee.name}`)
+                            }
+                          }}
                         >
                           <UserMinus className="h-3 w-3" />
                         </Button>

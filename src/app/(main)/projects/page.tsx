@@ -1,44 +1,91 @@
 "use client"
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
-import { Plus, Search, Grid3X3, List, SlidersHorizontal } from "lucide-react"
+import { Plus, Search, Grid3X3, List, SlidersHorizontal, AlertCircle, Edit2, Trash2, Users, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { FilterPanel } from "@/components/filters/filter-panel"
 import { FilterChips } from "@/components/filters/filter-chips"
 import { SortControl } from "@/components/sorting/sort-control"
-import { mockProjects, mockTasks, mockUsers } from "@/mocks/data"
 import { useFilters } from "@/hooks/use-filters"
 import { FilterManager } from "@/lib/filters"
 import { SortManager, type SortConfig } from "@/lib/sorting"
+import { useProjectsStore } from "@/stores/projects-store"
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
+import { EditProjectDialog } from "@/components/projects/edit-project-dialog"
+import { DeleteProjectDialog } from "@/components/projects/delete-project-dialog"
+import { MembersDialog } from "@/components/projects/members-dialog"
+import { TagsDialog } from "@/components/projects/tags-dialog"
+import { Loader2 } from "lucide-react"
 import Link from "next/link"
 
 type ViewMode = "grid" | "list"
 
 export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
-  const [searchQuery, setSearchQuery] = useState("")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isMembersOpen, setIsMembersOpen] = useState(false)
+  const [isTagsOpen, setIsTagsOpen] = useState(false)
+  const [editingProjectId, setEditingProjectId] = useState<string>("")
+  const [deletingProjectId, setDeletingProjectId] = useState<string>("")
+  const [deletingProjectName, setDeletingProjectName] = useState<string>("")
+  const [membersProjectId, setMembersProjectId] = useState<string>("")
+  const [tagsProjectId, setTagsProjectId] = useState<string>("")
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
   const [sortConfig, setSortConfig] = useState<SortConfig>(
     SortManager.getSortPreference("project") || SortManager.getDefaultSort("project")
   )
 
+  // Projects store
+  const {
+    projects,
+    loading,
+    error,
+    searchQuery,
+    filters,
+    pagination,
+    fetchProjects,
+    setSearchQuery,
+    setFilters,
+    setPagination,
+  } = useProjectsStore()
+
   const { projectFilters } = useFilters()
+
+  // Clear filters on mount to show all projects
+  useEffect(() => {
+    setFilters({})
+  }, [])
+
+  // Fetch projects on mount and when filters/search change
+  useEffect(() => {
+    fetchProjects({
+      search: searchQuery,
+      status: filters.status || undefined,
+      memberId: filters.memberId || undefined,
+      tagId: filters.tagId || undefined,
+      page: 1,
+      limit: 1000, // Show all projects in one page
+      sortBy: sortConfig.field,
+      sortOrder: sortConfig.direction === "asc" ? "ASC" : "DESC",
+    }).catch((err) => {
+      console.error("Failed to fetch projects:", err)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    searchQuery,
+    filters.status,
+    filters.memberId,
+    filters.tagId,
+    sortConfig.field,
+    sortConfig.direction,
+  ])
 
   // Save sort preference when it changes
   useEffect(() => {
@@ -47,12 +94,12 @@ export default function ProjectsPage() {
 
   // Apply filters and sorting
   const filteredAndSortedProjects = useMemo(() => {
-    let projects = [...mockProjects]
+    let projects_list = [...projects]
 
     // Apply search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      projects = projects.filter(
+      projects_list = projects_list.filter(
         (project) =>
           project.name.toLowerCase().includes(query) ||
           project.description.toLowerCase().includes(query)
@@ -60,13 +107,13 @@ export default function ProjectsPage() {
     }
 
     // Apply advanced filters from FilterManager
-    projects = FilterManager.filterProjects(projects, projectFilters)
+    projects_list = FilterManager.filterProjects(projects_list, projectFilters)
 
     // Apply sorting
-    projects = SortManager.sortProjects(projects, sortConfig)
+    projects_list = SortManager.sortProjects(projects_list, sortConfig)
 
-    return projects
-  }, [searchQuery, projectFilters, sortConfig])
+    return projects_list
+  }, [searchQuery, projects, projectFilters, sortConfig])
 
   const getInitials = (name: string) => {
     return name
@@ -77,11 +124,9 @@ export default function ProjectsPage() {
       .slice(0, 2)
   }
 
-  const getProjectStats = (projectId: string) => {
-    const projectTasks = mockTasks.filter((t) => t.projectId === projectId)
-    const completed = projectTasks.filter((t) => t.status === "done").length
-    const total = projectTasks.length
-    return { completed, total, progress: total > 0 ? Math.round((completed / total) * 100) : 0 }
+  // Calculate progress based on project progress field
+  const getProjectProgress = (project: any) => {
+    return project.progress || 0
   }
 
   return (
@@ -92,59 +137,30 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-bold md:text-3xl">Dự án</h1>
           <p className="text-muted-foreground">Quản lý và theo dõi tất cả dự án của bạn</p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Tạo dự án
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Tạo dự án mới</DialogTitle>
-              <DialogDescription>Điền thông tin để tạo dự án mới</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Tên dự án</Label>
-                <Input id="name" placeholder="Nhập tên dự án..." />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Mô tả</Label>
-                <Textarea id="description" placeholder="Mô tả ngắn về dự án..." />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Ngày bắt đầu</Label>
-                  <Input type="date" />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Ngày kết thúc</Label>
-                  <Input type="date" />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Màu sắc</Label>
-                <div className="flex gap-2">
-                  {["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"].map((color) => (
-                    <button
-                      key={color}
-                      className="h-8 w-8 rounded-full border-2 border-transparent hover:border-gray-400 transition-colors"
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                Hủy
-              </Button>
-              <Button onClick={() => setIsCreateOpen(false)}>Tạo dự án</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setIsCreateOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Tạo dự án
+        </Button>
+        <CreateProjectDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
       </div>
+
+      {/* Error State */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {error}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-4"
+              onClick={() => fetchProjects()}
+            >
+              Thử lại
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Filters and Controls */}
       <Card>
@@ -158,7 +174,10 @@ export default function ProjectsPage() {
                   placeholder="Tìm kiếm dự án..."
                   className="pl-9"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setPagination({ page: 1 })
+                  }}
                 />
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -199,7 +218,16 @@ export default function ProjectsPage() {
 
             {/* Stats */}
             <div className="text-sm text-muted-foreground">
-              {filteredAndSortedProjects.length} / {mockProjects.length} dự án
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Đang tải dự án...
+                </span>
+              ) : (
+                <span>
+                  {filteredAndSortedProjects.length} / {pagination.total} dự án
+                </span>
+              )}
             </div>
           </div>
         </CardContent>
@@ -208,8 +236,14 @@ export default function ProjectsPage() {
       {/* Filter Chips */}
       <FilterChips type="project" />
 
-      {/* Projects Grid/List */}
-      {filteredAndSortedProjects.length === 0 ? (
+      {/* Projects Grid/List or Loading/Empty State */}
+      {loading && !projects.length ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="h-64 animate-pulse bg-muted" />
+          ))}
+        </div>
+      ) : filteredAndSortedProjects.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -222,7 +256,7 @@ export default function ProjectsPage() {
       ) : viewMode === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredAndSortedProjects.map((project, index) => {
-            const stats = getProjectStats(project.id)
+            const progress = getProjectProgress(project)
             return (
               <motion.div
                 key={project.id}
@@ -230,65 +264,113 @@ export default function ProjectsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
-                <Link href={`/projects/${project.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div
-                          className="h-12 w-12 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-                          style={{ backgroundColor: project.color }}
+                <Card className="hover:shadow-md transition-shadow h-full flex flex-col group">
+                  <CardContent className="p-6 flex-1">
+                    <div className="flex items-start justify-between mb-4">
+                      <div
+                        className="h-12 w-12 rounded-lg flex items-center justify-center text-white font-bold text-lg"
+                        style={{ backgroundColor: project.color }}
+                      >
+                        {project.name.charAt(0)}
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setMembersProjectId(project.id)
+                            setIsMembersOpen(true)
+                          }}
+                          title="Quản lý thành viên"
                         >
-                          {project.name.charAt(0)}
-                        </div>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            project.status === "active"
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              : project.status === "on-hold"
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-                          }`}
+                          <Users className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setTagsProjectId(project.id)
+                            setIsTagsOpen(true)
+                          }}
+                          title="Quản lý tag"
                         >
-                          {project.status === "active"
-                            ? "Đang thực hiện"
+                          <Tag className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setEditingProjectId(project.id)
+                            setIsEditOpen(true)
+                          }}
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setDeletingProjectId(project.id)
+                            setDeletingProjectName(project.name)
+                            setIsDeleteOpen(true)
+                          }}
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          project.status === "active"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                             : project.status === "on-hold"
-                              ? "Tạm dừng"
-                              : "Hoàn thành"}
-                        </span>
-                      </div>
-                      <h3 className="font-semibold text-lg mb-2">{project.name}</h3>
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                              : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        }`}
+                      >
+                        {project.status === "active"
+                          ? "Đang thực hiện"
+                          : project.status === "on-hold"
+                            ? "Tạm dừng"
+                            : "Hoàn thành"}
+                      </span>
+                    </div>
+                    <Link href={`/projects/${project.id}`}>
+                      <h3 className="font-semibold text-lg mb-2 cursor-pointer hover:text-blue-600">{project.name}</h3>
                       <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{project.description}</p>
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tiến độ</span>
-                          <span className="font-medium">{stats.progress}%</span>
-                        </div>
-                        <Progress value={stats.progress} className="h-2" />
+                    </Link>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Tiến độ</span>
+                        <span className="font-medium">{progress}%</span>
                       </div>
-                      <div className="mt-4 flex items-center justify-between">
-                        <div className="flex -space-x-2">
-                          {project.members.slice(0, 4).map((memberId) => {
-                            const member = mockUsers.find((u) => u.id === memberId)
-                            return member ? (
-                              <Avatar key={memberId} className="h-7 w-7 border-2 border-background">
-                                <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
-                                <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
-                              </Avatar>
-                            ) : null
-                          })}
-                          {project.members.length > 4 && (
-                            <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                              <span className="text-xs">+{project.members.length - 4}</span>
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {stats.completed}/{stats.total} việc
-                        </span>
+                      <Progress value={progress} className="h-2" />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="flex -space-x-2">
+                        {project.members && project.members.slice(0, 4).map((member: any) => (
+                          <Avatar key={member.id} className="h-7 w-7 border-2 border-background">
+                            <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
+                            <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
+                          </Avatar>
+                        ))}
+                        {project.members && project.members.length > 4 && (
+                          <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                            <span className="text-xs">+{project.members.length - 4}</span>
+                          </div>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                      <span className="text-xs text-muted-foreground">
+                        {project.members ? project.members.length : 0} thành viên
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
             )
           })}
@@ -296,7 +378,7 @@ export default function ProjectsPage() {
       ) : (
         <div className="space-y-2">
           {filteredAndSortedProjects.map((project, index) => {
-            const stats = getProjectStats(project.id)
+            const progress = getProjectProgress(project)
             return (
               <motion.div
                 key={project.id}
@@ -304,18 +386,18 @@ export default function ProjectsPage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
-                <Link href={`/projects/${project.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold shrink-0"
-                          style={{ backgroundColor: project.color }}
-                        >
-                          {project.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                <Card className="hover:shadow-md transition-shadow group">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold shrink-0"
+                        style={{ backgroundColor: project.color }}
+                      >
+                        {project.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/projects/${project.id}`}>
+                          <div className="flex items-center gap-2 cursor-pointer hover:text-blue-600">
                             <h3 className="font-semibold truncate">{project.name}</h3>
                             <span
                               className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${
@@ -334,34 +416,82 @@ export default function ProjectsPage() {
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground truncate">{project.description}</p>
-                        </div>
-                        <div className="hidden md:flex items-center gap-6 shrink-0">
-                          <div className="w-32">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-muted-foreground">Tiến độ</span>
-                              <span>{stats.progress}%</span>
-                            </div>
-                            <Progress value={stats.progress} className="h-1.5" />
-                          </div>
-                          <div className="flex -space-x-2">
-                            {project.members.slice(0, 3).map((memberId) => {
-                              const member = mockUsers.find((u) => u.id === memberId)
-                              return member ? (
-                                <Avatar key={memberId} className="h-6 w-6 border-2 border-background">
-                                  <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
-                                  <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
-                                </Avatar>
-                              ) : null
-                            })}
-                          </div>
-                          <span className="text-sm text-muted-foreground w-20 text-right">
-                            {stats.completed}/{stats.total} việc
-                          </span>
-                        </div>
+                        </Link>
                       </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                      <div className="hidden md:flex items-center gap-6 shrink-0">
+                        <div className="w-32">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">Tiến độ</span>
+                            <span>{progress}%</span>
+                          </div>
+                          <Progress value={progress} className="h-1.5" />
+                        </div>
+                        <div className="flex -space-x-2">
+                          {project.members && project.members.slice(0, 3).map((member: any) => (
+                            <Avatar key={member.id} className="h-6 w-6 border-2 border-background">
+                              <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
+                              <AvatarFallback className="text-xs">{getInitials(member.name)}</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </div>
+                        <span className="text-sm text-muted-foreground w-20 text-right">
+                          {project.members ? project.members.length : 0} thành viên
+                        </span>
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setMembersProjectId(project.id)
+                            setIsMembersOpen(true)
+                          }}
+                          title="Quản lý thành viên"
+                        >
+                          <Users className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setTagsProjectId(project.id)
+                            setIsTagsOpen(true)
+                          }}
+                          title="Quản lý tag"
+                        >
+                          <Tag className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setEditingProjectId(project.id)
+                            setIsEditOpen(true)
+                          }}
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setDeletingProjectId(project.id)
+                            setDeletingProjectName(project.name)
+                            setIsDeleteOpen(true)
+                          }}
+                          title="Xóa"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
             )
           })}
@@ -370,6 +500,46 @@ export default function ProjectsPage() {
 
       {/* Filter Panel */}
       <FilterPanel open={isFilterPanelOpen} onClose={() => setIsFilterPanelOpen(false)} type="project" />
+
+      {/* Edit Dialog */}
+      <EditProjectDialog 
+        open={isEditOpen} 
+        onOpenChange={setIsEditOpen} 
+        projectId={editingProjectId}
+      />
+
+      {/* Delete Dialog */}
+      <DeleteProjectDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        projectId={deletingProjectId}
+        projectName={deletingProjectName}
+        onDeleted={() => {
+          // Refresh projects list after deletion
+          fetchProjects({
+            search: searchQuery,
+            status: filters.status,
+            memberId: filters.memberId,
+            tagId: filters.tagId,
+            page: 1,
+            limit: 1000,
+          }).catch((err) => console.error("Failed to refresh projects:", err))
+        }}
+      />
+
+      {/* Members Dialog */}
+      <MembersDialog
+        open={isMembersOpen}
+        onOpenChange={setIsMembersOpen}
+        projectId={membersProjectId}
+      />
+
+      {/* Tags Dialog */}
+      <TagsDialog
+        open={isTagsOpen}
+        onOpenChange={setIsTagsOpen}
+        projectId={tagsProjectId}
+      />
     </div>
   )
 }

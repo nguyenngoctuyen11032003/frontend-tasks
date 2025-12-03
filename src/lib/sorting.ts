@@ -146,7 +146,9 @@ export class SortManager {
           break
 
         case "deadline":
-          comparison = new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+          const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Number.MAX_SAFE_INTEGER
+          const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Number.MAX_SAFE_INTEGER
+          comparison = aDeadline - bDeadline
           break
 
         case "status":

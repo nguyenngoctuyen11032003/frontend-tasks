@@ -10,9 +10,10 @@ interface AuthStore {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<{ user: User; accessToken: string }>
   logout: () => void
   setUser: (user: User) => void
+  setToken: (token: string) => void
   hasPermission: (permission: Permission) => boolean
   hasAnyPermission: (permissions: Permission[]) => boolean
   hasAllPermissions: (permissions: Permission[]) => boolean
@@ -41,6 +42,7 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: true,
             isLoading: false,
           })
+          return response
         } catch (error) {
           set({ isLoading: false })
           throw error
@@ -63,6 +65,11 @@ export const useAuthStore = create<AuthStore>()(
 
       setUser: (user: User) => {
         set({ user })
+      },
+
+      setToken: (token: string) => {
+        api.setToken(token)
+        set({ token, isAuthenticated: true })
       },
 
       getAllPermissions: () => {

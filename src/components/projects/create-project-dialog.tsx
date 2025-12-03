@@ -33,7 +33,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   const [endDate, setEndDate] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const { createProject, fetchProjects } = useProjectsStore()
+  const { createProject, fetchProjects, setFilters, setSearchQuery } = useProjectsStore()
 
   const handleReset = useCallback(() => {
     setName("")
@@ -70,8 +70,21 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
 
       await createProject(payload)
 
-      // Refetch projects to get complete data with members, tags, etc.
-      await fetchProjects()
+      // Clear all filters before fetching to ensure new project is visible
+      setFilters({})
+      setSearchQuery("")
+      
+      // Refetch projects sorted by creation date (newest first) to show new project at top
+      await fetchProjects({ 
+        page: 1, 
+        limit: 1000,
+        search: "",
+        status: undefined,
+        memberId: undefined,
+        tagId: undefined,
+        sortBy: "createdAt",
+        sortOrder: "DESC",
+      })
 
       toast.success("Thành công", {
         description: `Dự án "${name}" đã được tạo thành công`,

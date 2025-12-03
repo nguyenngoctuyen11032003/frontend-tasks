@@ -65,9 +65,19 @@ export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModa
         message: reminderMessage,
       })
       
-      // Refresh task to get updated reminders
-      const updatedTask = await fetchTask(task.id)
-      setReminders(updatedTask.reminders || [])
+      // Update reminders from the task after adding
+      setReminders([
+        ...reminders,
+        {
+          id: Math.random().toString(36),
+          taskId: task.id,
+          reminderDate: new Date(`${reminderDate}T${reminderTime}`).toISOString(),
+          message: reminderMessage,
+          isActive: true,
+          createdBy: undefined as any,
+          createdAt: new Date().toISOString(),
+        }
+      ])
       
       setReminderDate("")
       setReminderTime("09:00")

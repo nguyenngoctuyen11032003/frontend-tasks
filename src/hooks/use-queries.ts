@@ -43,7 +43,10 @@ export function useProjects(filters: ProjectFilters = {}) {
             case "name":
               return a.name.localeCompare(b.name)
             case "deadline":
-              return new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+              return (
+                (a.deadline ? new Date(a.deadline).getTime() : 0) -
+                (b.deadline ? new Date(b.deadline).getTime() : 0)
+              )
             case "progress":
               return (b.progress || 0) - (a.progress || 0)
             default:

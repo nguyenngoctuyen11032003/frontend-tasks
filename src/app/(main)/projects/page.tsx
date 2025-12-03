@@ -56,12 +56,20 @@ export default function ProjectsPage() {
     setPagination,
   } = useProjectsStore()
 
-  const { projectFilters } = useFilters()
+  const { projectFilters, setProjectFilters } = useFilters()
 
   // Clear filters on mount to show all projects
   useEffect(() => {
     setFilters({})
-  }, [])
+    setProjectFilters({
+      status: [],
+      members: [],
+      tags: [],
+      dateRange: { start: null, end: null },
+      progressRange: undefined,
+      search: "",
+    })
+  }, [setProjectFilters])
 
   // Fetch projects on mount and when filters/search change
   useEffect(() => {

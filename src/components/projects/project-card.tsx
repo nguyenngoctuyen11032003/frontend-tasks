@@ -18,6 +18,7 @@ interface ProjectCardProps {
 
 export const ProjectCard = memo(function ProjectCard({ project, onClick, className }: ProjectCardProps) {
   const formatDeadline = useMemo(() => {
+    if (!project.deadline) return "N/A"
     const date = new Date(project.deadline)
     return date.toLocaleDateString("vi-VN", {
       day: "2-digit",

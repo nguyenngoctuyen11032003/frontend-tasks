@@ -161,6 +161,13 @@ export default function ProjectDetailPage() {
   }
 
   const tasksByStatus = {
+    todo: projectTasks.filter((t) => t.status === "todo"),
+    "in-progress": projectTasks.filter((t) => t.status === "in_progress"),
+    review: projectTasks.filter((t) => t.status === "review"),
+    done: projectTasks.filter((t) => t.status === "done"),
+  }
+
+  const filteredTasksByStatus = {
     todo: filteredTasks.filter((t) => t.status === "todo"),
     "in-progress": filteredTasks.filter((t) => t.status === "in_progress"),
     review: filteredTasks.filter((t) => t.status === "review"),
@@ -814,6 +821,18 @@ export default function ProjectDetailPage() {
         defaultProjectId={project.id}
         onSuccess={() => {
           fetchTasks({ projectId: project.id })
+        }}
+      />
+
+      {/* Edit Task Modal */}
+      <TaskCreateModal
+        open={isEditTaskOpen}
+        onOpenChange={setIsEditTaskOpen}
+        mode="edit"
+        editTask={editingTask}
+        onSuccess={() => {
+          fetchTasks({ projectId: project.id })
+          setEditingTask(null)
         }}
       />
 

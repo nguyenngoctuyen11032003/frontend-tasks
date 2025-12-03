@@ -79,6 +79,8 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
   const [loadingAttachments, setLoadingAttachments] = useState(false)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false)
+  const [deleteCommentId, setDeleteCommentId] = useState<string | null>(null)
+  const [isDeleteCommentDialogOpen, setIsDeleteCommentDialogOpen] = useState(false)
 
   // Get stores
   const {
@@ -86,7 +88,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
     fetchTask,
     updateTask,
     deleteTask,
-    assignUser,
+    assignUsers,
     removeAssignee,
     addChecklistItem,
     updateChecklistItem,
@@ -392,7 +394,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                           onChange={() => handleToggleChecklistItem(item.id)}
                           className="h-4 w-4 rounded cursor-pointer"
                         />
-                        {editingChecklistId === item.id ? (
+                        {isEditingDescription && editingChecklistId === item.id ? (
                           <div className="flex-1 flex gap-2">
                             <Input
                               value={editingChecklistText}
@@ -422,49 +424,53 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                             <span className={cn("text-sm flex-1", item.completed && "line-through text-muted-foreground")}>
                               {item.title}
                             </span>
-                            <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6"
-                                onClick={() => handleStartEditChecklistItem(item.id, item.title)}
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 text-red-600 hover:text-red-700"
-                                onClick={() => handleDeleteChecklistItem(item.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            {isEditingDescription && (
+                              <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={() => handleStartEditChecklistItem(item.id, item.title)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-red-600 hover:text-red-700"
+                                  onClick={() => handleDeleteChecklistItem(item.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
                     ))}
                   </div>
-                  {/* Add New Checklist Item */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Thêm mục mới..."
-                      value={newChecklistItem}
-                      onChange={(e) => setNewChecklistItem(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleAddChecklistItem()
-                      }}
-                      className="h-9 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleAddChecklistItem}
-                      disabled={!newChecklistItem.trim()}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Thêm
-                    </Button>
-                  </div>
+                  {/* Add New Checklist Item - Only in Edit Mode */}
+                  {isEditingDescription && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Thêm mục mới..."
+                        value={newChecklistItem}
+                        onChange={(e) => setNewChecklistItem(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddChecklistItem()
+                        }}
+                        className="h-9 text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleAddChecklistItem}
+                        disabled={!newChecklistItem.trim()}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Thêm
+                      </Button>
+                    </div>
+                  )}
                   
                   {/* Save/Cancel Buttons for Description - Only in Edit Mode */}
                   {isEditingDescription && (
@@ -560,7 +566,11 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                 await CommentsService.createComment(task.id, { content: comment.trim() })
                                 setComment("")
                                 toast.success("Đã gửi bình luận")
-                                fetchComments()
+                                // Refresh both comments and activity logs
+                                await Promise.all([
+                                  fetchComments(),
+                                  fetchActivityLogs()
+                                ])
                               } catch (error: any) {
                                 toast.error(error?.message || "Không thể gửi bình luận")
                               }
@@ -603,17 +613,9 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                       variant="ghost" 
                                       size="sm" 
                                       className="h-7 text-xs"
-                                      onClick={async () => {
-                                        if (!task) return
-                                        const confirmed = window.confirm("Xóa bình luận này?")
-                                        if (!confirmed) return
-                                        try {
-                                          await CommentsService.deleteComment(task.id, c.id)
-                                          toast.success("Đã xóa bình luận")
-                                          fetchComments()
-                                        } catch (error: any) {
-                                          toast.error(error?.message || "Không thể xóa bình luận")
-                                        }
+                                      onClick={() => {
+                                        setDeleteCommentId(c.id)
+                                        setIsDeleteCommentDialogOpen(true)
                                       }}
                                     >
                                       <Trash2 className="h-3 w-3 mr-1" />
@@ -677,7 +679,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                   <Paperclip className="h-5 w-5 text-primary" />
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium">{file.originalName || file.filename}</p>
+                                  <p className="text-sm font-medium">{file.name}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {file.size ? `${(file.size / 1024).toFixed(2)} KB` : "Unknown size"}
                                   </p>
@@ -689,7 +691,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                   size="icon" 
                                   className="h-8 w-8"
                                   onClick={() => {
-                                    const url = UploadService.getDownloadUrl(file.path)
+                                    const url = UploadService.getDownloadUrl(file.url)
                                     window.open(url, "_blank")
                                   }}
                                 >
@@ -700,7 +702,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                   size="icon" 
                                   className="h-8 w-8 text-destructive"
                                   onClick={async () => {
-                                    const confirmed = window.confirm(`Xóa file ${file.originalName || file.filename}?`)
+                                    const confirmed = window.confirm(`Xóa file ${file.name}?`)
                                     if (!confirmed) return
                                     try {
                                       await UploadService.deleteFile(file.id)
@@ -800,7 +802,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                 onClick={async () => {
                                   if (!task) return
                                   try {
-                                    await assignUser(task.id, user.id)
+                                    await assignUsers(task.id, [user.id])
                                     toast.success(`Đã thêm ${user.name}`)
                                     setIsAddingAssignee(false)
                                     setAssigneeSearch("")
@@ -1037,6 +1039,42 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Comment Confirmation Dialog */}
+      <AlertDialog open={isDeleteCommentDialogOpen} onOpenChange={setIsDeleteCommentDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa bình luận</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!task || !deleteCommentId) return
+                try {
+                  await CommentsService.deleteComment(task.id, deleteCommentId)
+                  toast.success("Đã xóa bình luận")
+                  setIsDeleteCommentDialogOpen(false)
+                  setDeleteCommentId(null)
+                  // Refresh both comments and activity logs
+                  await Promise.all([
+                    fetchComments(),
+                    fetchActivityLogs()
+                  ])
+                } catch (error: any) {
+                  toast.error(error?.message || "Không thể xóa bình luận")
+                }
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Xóa

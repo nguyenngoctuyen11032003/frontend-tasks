@@ -182,7 +182,8 @@ export const useReportsStore = create<ReportsState>()(
         try {
           set({ loading: true, error: null });
 
-          const teamPerformance = await reportsService.getTeamPerformance();
+          const { startDate, endDate } = get().filters;
+          const teamPerformance = await reportsService.getTeamPerformance(startDate, endDate);
 
           set({
             teamPerformance,
@@ -210,7 +211,8 @@ export const useReportsStore = create<ReportsState>()(
         try {
           set({ loading: true, error: null });
 
-          const projectsStatistics = await reportsService.getProjectsStatistics();
+          const { startDate, endDate } = get().filters;
+          const projectsStatistics = await reportsService.getProjectsStatistics(startDate, endDate);
 
           set({
             projectsStatistics,

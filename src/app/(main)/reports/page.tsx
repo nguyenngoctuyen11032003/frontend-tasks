@@ -12,7 +12,6 @@ import {
   ArrowDown,
   AlertCircle,
   Loader2,
-  FileJson,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,7 +34,7 @@ import {
 } from "recharts"
 import { useReportsStore } from "@/stores/reports-store"
 import { reportsService, ChartType, ReportType, ExportFormat } from "@/services/reports.service"
-import { ExportReportDialog, AdvancedExportReportDialog } from "@/components/reports"
+import { AdvancedExportReportDialog } from "@/components/reports"
 
 /**
  * Helper function to get chart color for status
@@ -56,6 +55,40 @@ const getStatusColor = (status: string): string => {
     "_id": "#8b5cf6",
   }
   return colors[status] || "#94a3b8"
+}
+
+/**
+ * Helper function to translate status/priority to Vietnamese
+ */
+const getVietnameseLabel = (label: string): string => {
+  const translations: Record<string, string> = {
+    // Task status
+    "todo": "Chưa bắt đầu",
+    "in_progress": "Đang tiến hành",
+    "in progress": "Đang tiến hành",
+    "review": "Chờ xem xét",
+    "done": "Hoàn thành",
+    "completed": "Hoàn thành",
+    
+    // Priority
+    "urgent": "Cấp bách",
+    "high": "Cao",
+    "medium": "Trung bình",
+    "low": "Thấp",
+    
+    // Project status
+    "active": "Hoạt động",
+    "on-hold": "Tạm dừng",
+    "on_hold": "Tạm dừng",
+    "paused": "Tạm dừng",
+    
+    // Common
+    "none": "Không",
+    "unknown": "Không xác định",
+  }
+  
+  const key = label.toLowerCase().trim()
+  return translations[key] || label
 }
 
 /**
@@ -99,7 +132,6 @@ export default function ReportsPage() {
 
   // Local state for date range
   const [dateRange, setDateRange] = React.useState("year")
-  const [showExportDialog, setShowExportDialog] = React.useState(false)
   const [showAdvancedExportDialog, setShowAdvancedExportDialog] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
 
@@ -153,7 +185,7 @@ export default function ReportsPage() {
     ]).catch((err) => {
       console.error("Failed to fetch reports:", err)
     })
-  }, [dateRange])
+  }, [dateRange, fetchStatistics, fetchAllChartData, fetchTeamPerformance, fetchProjectsStatistics, setFilters])
 
   /**
    * Transform chart data for display
@@ -163,7 +195,7 @@ export default function ReportsPage() {
     if (!chart) return []
 
     return chart.data.map((item) => ({
-      name: item.label || item._id || "Unknown",
+      name: getVietnameseLabel(item.label || item._id || "Không xác định"),
       value: item.value || item.count || 0,
       color: getStatusColor(item._id || item.label || "unknown"),
     }))
@@ -174,7 +206,7 @@ export default function ReportsPage() {
     if (!chart) return []
 
     return chart.data.map((item) => ({
-      name: item.label || item._id || "Unknown",
+      name: getVietnameseLabel(item.label || item._id || "Không xác định"),
       value: item.value || item.count || 0,
       color: getStatusColor(item._id || item.label || "unknown"),
     }))
@@ -185,7 +217,7 @@ export default function ReportsPage() {
     if (!chart) return []
 
     return chart.data.map((item) => ({
-      name: item.label || item._id || "Unknown",
+      name: getVietnameseLabel(item.label || item._id || "Không xác định"),
       value: item.value || item.count || 0,
       color: getStatusColor(item._id || item.label || "unknown"),
     }))
@@ -243,42 +275,6 @@ export default function ReportsPage() {
     } catch (err) {
       console.error("Export error:", err)
       toast.error("Không thể xuất báo cáo")
-    }
-  }
-
-  /**
-   * Handle quick export
-   */
-  const handleQuickExport = async () => {
-    try {
-      if (!statistics) {
-        toast.error("No data available to export")
-        return
-      }
-
-      const { startDate, endDate } = getDateRange(dateRange)
-
-      const report = await reportsService.downloadReport({
-        type: ReportType.TASKS,
-        startDate,
-        endDate,
-        format: ExportFormat.CSV,
-      })
-
-      // Create download link
-      const url = window.URL.createObjectURL(report)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `bao-cao-${dateRange}-${new Date().toISOString().split("T")[0]}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      toast.success("Report exported successfully")
-    } catch (err) {
-      toast.error("Failed to export report")
-      console.error(err)
     }
   }
 
@@ -379,7 +375,7 @@ export default function ReportsPage() {
           </Select>
 
           <Button
-            onClick={handleQuickExport}
+            onClick={() => setShowAdvancedExportDialog(true)}
             disabled={loading || isExporting}
             size="sm"
           >
@@ -391,28 +387,10 @@ export default function ReportsPage() {
             ) : (
               <>
                 <Download className="mr-2 h-4 w-4" />
-                Xuất CSV
+                Xuất báo cáo
               </>
             )}
           </Button>
-
-          <Button
-            onClick={() => setShowAdvancedExportDialog(true)}
-            disabled={loading || isExporting}
-            size="sm"
-            variant="outline"
-          >
-            <FileJson className="mr-2 h-4 w-4" />
-            Xuất nâng cao
-          </Button>
-
-          <ExportReportDialog
-            isOpen={showExportDialog}
-            onOpenChange={setShowExportDialog}
-            onExport={handleExportReport}
-            isLoading={loading}
-            suggestedFilename={`bao-cao-${dateRange}`}
-          />
 
           <AdvancedExportReportDialog
             isOpen={showAdvancedExportDialog}

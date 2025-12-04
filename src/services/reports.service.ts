@@ -319,9 +319,16 @@ class ReportsService {
    * Get team performance data
    * GET /reports/team-performance
    */
-  async getTeamPerformance(): Promise<any[]> {
+  async getTeamPerformance(startDate?: string, endDate?: string): Promise<any[]> {
     try {
-      const data = await this.request<any[]>('/reports/team-performance');
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      
+      const query = params.toString();
+      const url = `/reports/team-performance${query ? '?' + query : ''}`;
+      
+      const data = await this.request<any[]>(url);
       if (!data) {
         throw new ReportsApiError(500, 'No data received from team performance endpoint');
       }
@@ -335,9 +342,16 @@ class ReportsService {
    * Get projects statistics
    * GET /reports/projects-statistics
    */
-  async getProjectsStatistics(): Promise<any[]> {
+  async getProjectsStatistics(startDate?: string, endDate?: string): Promise<any[]> {
     try {
-      const data = await this.request<any[]>('/reports/projects-statistics');
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      
+      const query = params.toString();
+      const url = `/reports/projects-statistics${query ? '?' + query : ''}`;
+      
+      const data = await this.request<any[]>(url);
       if (!data) {
         throw new ReportsApiError(500, 'No data received from projects statistics endpoint');
       }

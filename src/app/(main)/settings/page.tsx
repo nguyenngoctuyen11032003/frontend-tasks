@@ -1098,7 +1098,13 @@ function SettingsContent() {
       <AvatarUploadModal
         open={avatarModalOpen}
         onClose={() => setAvatarModalOpen(false)}
-        onUpload={handleAvatarUpload}
+        onSuccess={(avatarUrl: string) => {
+          setCurrentAvatar(avatarUrl)
+          if (authUser) {
+            setAuthUser({ ...authUser, avatarUrl })
+          }
+          setAvatarModalOpen(false)
+        }}
         currentAvatar={currentAvatar}
       />
 

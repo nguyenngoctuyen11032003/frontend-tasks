@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback } from "react"
 import Cropper, { Area } from "react-easy-crop"
-import { Upload, ZoomIn, ZoomOut, RotateCw, Check, X } from "lucide-react"
+import { Upload, RotateCw, Check, X, Loader2, ZoomOut } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -11,27 +11,70 @@ import { useDropzone } from "react-dropzone"
 import imageCompression from "browser-image-compression"
 import { toast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import useUploadStore from "@/stores/upload-store"
 
+/**
+ * Props for AvatarUploadModal component
+ * 
+ * @interface AvatarUploadModalProps
+ * @property {boolean} open - Whether modal is open
+ * @property {() => void} onClose - Callback to close modal
+ * @property {string} [currentAvatar] - Current user avatar URL (for display)
+ * @property {(avatarUrl: string) => void} [onSuccess] - Callback with new avatar URL
+ */
 interface AvatarUploadModalProps {
   open: boolean
   onClose: () => void
-  onUpload: (file: File) => Promise<void>
   currentAvatar?: string
+  onSuccess?: (avatarUrl: string) => void
 }
 
+/**
+ * Avatar Upload Modal Component
+ * 
+ * Features:
+ * - Image selection via file picker or drag-drop
+ * - Interactive crop with zoom and rotation
+ * - Image compression (browser-side) before upload
+ * - Progress tracking during upload
+ * - Error handling with user-friendly messages
+ * - Integrates with upload-store for state management
+ * 
+ * Image Flow:
+ * 1. User selects/drops image
+ * 2. Display crop preview (react-easy-crop)
+ * 3. User adjusts crop area, zoom, rotation
+ * 4. On upload: compress image (browser-image-compression)
+ * 5. Send to /upload/avatar endpoint
+ * 6. Update avatar URL in profile
+ * 
+ * @example
+ * ```tsx
+ * <AvatarUploadModal 
+ *   open={isOpen}
+ *   onClose={() => setIsOpen(false)}
+ *   currentAvatar={user.avatarUrl}
+ *   onSuccess={(url) => updateUser({avatar: url})}
+ * />
+ * ```
+ */
 export function AvatarUploadModal({
   open,
   onClose,
-  onUpload,
   currentAvatar,
+  onSuccess,
 }: AvatarUploadModalProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [rotation, setRotation] = useState(0)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
+  const [localProgress, setLocalProgress] = useState(0)
+
+  // Use upload store
+  const uploadAvatar = useUploadStore((state) => state.uploadAvatar)
+  const uploading = useUploadStore((state) => state.loading)
+  const uploadError = useUploadStore((state) => state.error)
 
   const onCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
     setCroppedAreaPixels(croppedAreaPixels)
@@ -128,41 +171,38 @@ export function AvatarUploadModal({
   const handleUpload = async () => {
     if (!imageSrc || !croppedAreaPixels) return
 
-    setIsUploading(true)
-    setUploadProgress(0)
+    setLocalProgress(0)
 
     try {
       // Crop image
-      setUploadProgress(25)
+      setLocalProgress(25)
       const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels, rotation)
 
       // Compress image
-      setUploadProgress(50)
+      setLocalProgress(50)
       const compressedBlob = await imageCompression(croppedBlob as File, {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 512,
         useWebWorker: true,
         onProgress: (progress) => {
-          setUploadProgress(50 + progress * 0.25)
+          setLocalProgress(50 + progress * 0.25)
         },
       })
 
       // Convert blob to file
       const file = new File([compressedBlob], "avatar.jpg", { type: "image/jpeg" })
 
-      // Upload
-      setUploadProgress(75)
-      await onUpload(file)
+      // Upload using store
+      setLocalProgress(75)
+      const avatarUrl = await uploadAvatar(file)
+      setLocalProgress(100)
 
-      setUploadProgress(100)
       toast.success("Cập nhật ảnh đại diện thành công")
+      onSuccess?.(avatarUrl)
       handleClose()
     } catch (error) {
-      console.error("Upload error:", error)
-      toast.error("Có lỗi xảy ra khi tải ảnh lên")
-    } finally {
-      setIsUploading(false)
-      setUploadProgress(0)
+      const errorMessage = error instanceof Error ? error.message : "Có lỗi xảy ra khi tải ảnh lên"
+      toast.error(errorMessage)
     }
   }
 
@@ -172,8 +212,7 @@ export function AvatarUploadModal({
     setZoom(1)
     setRotation(0)
     setCroppedAreaPixels(null)
-    setIsUploading(false)
-    setUploadProgress(0)
+    setLocalProgress(0)
     onClose()
   }
 
@@ -254,7 +293,7 @@ export function AvatarUploadModal({
                     variant="outline"
                     size="sm"
                     onClick={handleRotate}
-                    disabled={isUploading}
+                    disabled={uploading}
                   >
                     <RotateCw className="h-4 w-4 mr-2" />
                     90°
@@ -262,13 +301,20 @@ export function AvatarUploadModal({
                 </div>
 
                 {/* Upload Progress */}
-                {isUploading && (
+                {uploading && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Đang tải lên...</span>
-                      <span className="font-medium">{uploadProgress}%</span>
+                      <span className="font-medium">{localProgress}%</span>
                     </div>
-                    <Progress value={uploadProgress} />
+                    <Progress value={localProgress} />
+                  </div>
+                )}
+
+                {/* Error Display */}
+                {uploadError && (
+                  <div className="p-3 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+                    <p className="text-sm text-red-600 dark:text-red-200">{uploadError}</p>
                   </div>
                 )}
               </div>
@@ -278,14 +324,23 @@ export function AvatarUploadModal({
                 <Button
                   variant="outline"
                   onClick={() => setImageSrc(null)}
-                  disabled={isUploading}
+                  disabled={uploading}
                 >
                   <X className="h-4 w-4 mr-2" />
                   Chọn ảnh khác
                 </Button>
-                <Button onClick={handleUpload} disabled={isUploading}>
-                  <Check className="h-4 w-4 mr-2" />
-                  {isUploading ? "Đang tải..." : "Xác nhận"}
+                <Button onClick={handleUpload} disabled={uploading}>
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Đang tải...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Xác nhận
+                    </>
+                  )}
                 </Button>
               </div>
             </>

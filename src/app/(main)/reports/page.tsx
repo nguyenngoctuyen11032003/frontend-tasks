@@ -1,10 +1,8 @@
 "use client"
-import { useState } from "react"
+import React, { useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
 import {
   Download,
-  FileSpreadsheet,
-  FileText,
   Calendar,
   TrendingUp,
   Users,
@@ -12,18 +10,15 @@ import {
   BarChart3,
   ArrowUp,
   ArrowDown,
+  AlertCircle,
+  Loader2,
+  FileJson,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { mockProjects, mockTasks, mockUsers, mockRoleDefinitions } from "@/mocks/data"
 import { toast } from "sonner"
-import { ExportDialog } from "@/components/export"
-import { QuickExport } from "@/components/export"
 import {
   BarChart,
   Bar,
@@ -37,116 +32,329 @@ import {
   Cell,
   LineChart,
   Line,
-  Legend,
 } from "recharts"
+import { useReportsStore } from "@/stores/reports-store"
+import { reportsService, ChartType, ReportType, ExportFormat } from "@/services/reports.service"
+import { ExportReportDialog, AdvancedExportReportDialog } from "@/components/reports"
 
-const tasksByStatusData = [
-  { name: "Chờ làm", value: mockTasks.filter((t) => t.status === "todo").length, color: "#64748b" },
-  { name: "Đang làm", value: mockTasks.filter((t) => t.status === "in_progress").length, color: "#3b82f6" },
-  { name: "Review", value: mockTasks.filter((t) => t.status === "review").length, color: "#f59e0b" },
-  { name: "Hoàn thành", value: mockTasks.filter((t) => t.status === "done").length, color: "#10b981" },
-]
+/**
+ * Helper function to get chart color for status
+ */
+const getStatusColor = (status: string): string => {
+  const colors: Record<string, string> = {
+    "todo": "#64748b",
+    "in_progress": "#3b82f6",
+    "review": "#f59e0b",
+    "done": "#10b981",
+    "urgent": "#ef4444",
+    "high": "#f97316",
+    "medium": "#eab308",
+    "low": "#22c55e",
+    "active": "#3b82f6",
+    "on-hold": "#f59e0b",
+    "completed": "#10b981",
+    "_id": "#8b5cf6",
+  }
+  return colors[status] || "#94a3b8"
+}
 
-const weeklyData = [
-  { name: "T2", completed: 5, created: 8 },
-  { name: "T3", completed: 8, created: 6 },
-  { name: "T4", completed: 12, created: 10 },
-  { name: "T5", completed: 7, created: 9 },
-  { name: "T6", completed: 15, created: 12 },
-  { name: "T7", completed: 3, created: 2 },
-  { name: "CN", completed: 2, created: 1 },
-]
+/**
+ * Skeleton loader component
+ */
+const ChartSkeleton = () => (
+  <div className="h-[280px] bg-muted animate-pulse rounded-lg" />
+)
 
-const monthlyTrendData = [
-  { name: "T1", tasks: 45 },
-  { name: "T2", tasks: 52 },
-  { name: "T3", tasks: 48 },
-  { name: "T4", tasks: 61 },
-  { name: "T5", tasks: 55 },
-  { name: "T6", tasks: 67 },
-  { name: "T7", tasks: 72 },
-  { name: "T8", tasks: 78 },
-  { name: "T9", tasks: 85 },
-  { name: "T10", tasks: 92 },
-  { name: "T11", tasks: 88 },
-  { name: "T12", tasks: 95 },
-]
-
-// Priority distribution data
-const priorityData = [
-  { name: "Khẩn cấp", value: mockTasks.filter((t) => t.priority === "urgent").length, color: "#ef4444" },
-  { name: "Cao", value: mockTasks.filter((t) => t.priority === "high").length, color: "#f97316" },
-  { name: "Trung bình", value: mockTasks.filter((t) => t.priority === "medium").length, color: "#eab308" },
-  { name: "Thấp", value: mockTasks.filter((t) => t.priority === "low").length, color: "#22c55e" },
-]
-
-// Project status data
-const projectStatusData = [
-  { name: "Đang thực hiện", value: mockProjects.filter((p) => p.status === "active").length, color: "#3b82f6" },
-  { name: "Tạm dừng", value: mockProjects.filter((p) => p.status === "on-hold").length, color: "#f59e0b" },
-  { name: "Hoàn thành", value: mockProjects.filter((p) => p.status === "completed").length, color: "#10b981" },
-]
-
-// Task completion rate trend
-const completionRateData = weeklyData.map((day) => ({
-  name: day.name,
-  rate: day.created > 0 ? Math.round((day.completed / day.created) * 100) : 0,
-}))
-
-// Top performers data
-const topPerformersData = mockUsers
-  .map((user) => {
-    const userTasks = mockTasks.filter((t) => t.assignees.some((a) => a.id === user.id))
-    const completed = userTasks.filter((t) => t.status === "done").length
-    return {
-      name: user.name.split(" ").slice(-1)[0], // Last name
-      tasks: completed,
-    }
-  })
-  .sort((a, b) => b.tasks - a.tasks)
-  .slice(0, 6)
-
+const StatCardSkeleton = () => (
+  <Card>
+    <CardContent className="p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+          <div className="h-8 w-16 bg-muted animate-pulse rounded" />
+        </div>
+        <div className="h-12 w-12 bg-muted animate-pulse rounded-xl" />
+      </div>
+    </CardContent>
+  </Card>
+)
 
 export default function ReportsPage() {
-  const [dateRange, setDateRange] = useState("week")
-  const [selectedProject, setSelectedProject] = useState("all")
-  const [showExportDialog, setShowExportDialog] = useState(false)
+  // Zustand store hooks
+  const {
+    statistics,
+    chartData,
+    teamPerformance,
+    projectsStatistics,
+    filters,
+    loading,
+    error,
+    fetchStatistics,
+    fetchAllChartData,
+    fetchTeamPerformance,
+    fetchProjectsStatistics,
+    setFilters,
+    clearError,
+  } = useReportsStore()
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
+  // Local state for date range
+  const [dateRange, setDateRange] = React.useState("year")
+  const [showExportDialog, setShowExportDialog] = React.useState(false)
+  const [showAdvancedExportDialog, setShowAdvancedExportDialog] = React.useState(false)
+  const [isExporting, setIsExporting] = React.useState(false)
+
+  /**
+   * Calculate date range based on selected period
+   */
+  const getDateRange = (range: string) => {
+    const today = new Date()
+    let startDate = new Date()
+
+    switch (range) {
+      case "week":
+        startDate.setDate(today.getDate() - today.getDay())
+        break
+      case "month":
+        startDate.setDate(1)
+        break
+      case "quarter":
+        startDate.setMonth(Math.floor(today.getMonth() / 3) * 3)
+        startDate.setDate(1)
+        break
+      case "year":
+      default:
+        startDate.setMonth(0)
+        startDate.setDate(1)
+    }
+
+    return {
+      startDate: startDate.toISOString().split("T")[0],
+      endDate: today.toISOString().split("T")[0],
+    }
   }
 
-  // Calculate stats
-  const totalTasks = mockTasks.length
-  const completedTasks = mockTasks.filter((t) => t.status === "done").length
-  const completionRate = Math.round((completedTasks / totalTasks) * 100)
+  /**
+   * Load data when component mounts or filters change
+   */
+  useEffect(() => {
+    const { startDate, endDate } = getDateRange(dateRange)
 
-  const teamPerformance = mockUsers.slice(0, 5).map((user) => {
-    const userTasks = mockTasks.filter((t) => t.assignees.some((a) => a.id === user.id))
-    const completed = userTasks.filter((t) => t.status === "done").length
-    const role = mockRoleDefinitions.find((r) => user.roles.includes(r.name))
-    return {
-      ...user,
-      roleDisplayName: role?.displayName || user.role,
-      totalTasks: userTasks.length,
-      completedTasks: completed,
-      rate: userTasks.length > 0 ? Math.round((completed / userTasks.length) * 100) : 0,
+    setFilters({
+      startDate,
+      endDate,
+    })
+
+    // Fetch statistics and all charts
+    Promise.all([
+      fetchStatistics(),
+      fetchAllChartData(),
+      fetchTeamPerformance(),
+      fetchProjectsStatistics(),
+    ]).catch((err) => {
+      console.error("Failed to fetch reports:", err)
+    })
+  }, [dateRange])
+
+  /**
+   * Transform chart data for display
+   */
+  const tasksByStatusData = useMemo(() => {
+    const chart = chartData.find((c) => c.type === ChartType.TASK_STATUS)
+    if (!chart) return []
+
+    return chart.data.map((item) => ({
+      name: item.label || item._id || "Unknown",
+      value: item.value || item.count || 0,
+      color: getStatusColor(item._id || item.label || "unknown"),
+    }))
+  }, [chartData])
+
+  const priorityData = useMemo(() => {
+    const chart = chartData.find((c) => c.type === ChartType.TASK_PRIORITY)
+    if (!chart) return []
+
+    return chart.data.map((item) => ({
+      name: item.label || item._id || "Unknown",
+      value: item.value || item.count || 0,
+      color: getStatusColor(item._id || item.label || "unknown"),
+    }))
+  }, [chartData])
+
+  const projectStatusData = useMemo(() => {
+    const chart = chartData.find((c) => c.type === ChartType.PROJECT_STATUS)
+    if (!chart) return []
+
+    return chart.data.map((item) => ({
+      name: item.label || item._id || "Unknown",
+      value: item.value || item.count || 0,
+      color: getStatusColor(item._id || item.label || "unknown"),
+    }))
+  }, [chartData])
+
+  const userActivityData = useMemo(() => {
+    const chart = chartData.find((c) => c.type === ChartType.USER_ACTIVITY)
+    if (!chart) return []
+
+    return chart.data.map((item) => ({
+      name: item.label || item.name || "User",
+      tasks: item.value || item.count || 0,
+      color: getStatusColor("_id"),
+    }))
+  }, [chartData])
+
+  const completionTrendData = useMemo(() => {
+    const chart = chartData.find((c) => c.type === ChartType.TASK_COMPLETION_TREND)
+    if (!chart) return []
+
+    return chart.data.map((item) => ({
+      name: new Date(item.date || new Date()).toLocaleDateString("vi-VN", {
+        month: "2-digit",
+        day: "2-digit",
+      }),
+      rate: item.value || item.percentage || 0,
+    }))
+  }, [chartData])
+
+  /**
+   * Handle export from dialog
+   */
+  const handleExportReport = async (format: ExportFormat, filename: string) => {
+    try {
+      const { startDate, endDate } = getDateRange(dateRange)
+
+      const report = await reportsService.downloadReport({
+        type: ReportType.TASKS,
+        startDate,
+        endDate,
+        format,
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(report)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${filename}.${format}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast.success(`Báo cáo đã được xuất thành công`)
+    } catch (err) {
+      console.error("Export error:", err)
+      toast.error("Không thể xuất báo cáo")
     }
-  })
+  }
 
-  // Export data
-  const exportFields = [
-    { key: "id", label: "ID" },
-    { key: "title", label: "Tiêu đề" },
-    { key: "status", label: "Trạng thái" },
-    { key: "priority", label: "Độ ưu tiên" },
-    { key: "dueDate", label: "Hạn chót" },
-  ]
+  /**
+   * Handle quick export
+   */
+  const handleQuickExport = async () => {
+    try {
+      if (!statistics) {
+        toast.error("No data available to export")
+        return
+      }
+
+      const { startDate, endDate } = getDateRange(dateRange)
+
+      const report = await reportsService.downloadReport({
+        type: ReportType.TASKS,
+        startDate,
+        endDate,
+        format: ExportFormat.CSV,
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(report)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `bao-cao-${dateRange}-${new Date().toISOString().split("T")[0]}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast.success("Report exported successfully")
+    } catch (err) {
+      toast.error("Failed to export report")
+      console.error(err)
+    }
+  }
+
+  /**
+   * Handle date range change
+   */
+  const handleDateRangeChange = (value: string) => {
+    setDateRange(value)
+  }
+
+  // Render loading state
+  if (loading && !statistics) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold md:text-3xl">Báo cáo</h1>
+            <p className="text-muted-foreground">Đang tải dữ liệu...</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+              </CardHeader>
+              <CardContent>
+                <ChartSkeleton />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Render error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold md:text-3xl">Báo cáo</h1>
+            <p className="text-muted-foreground">Phân tích và thống kê hiệu suất làm việc</p>
+          </div>
+        </div>
+
+        <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-900/20">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-red-900 dark:text-red-200">Error Loading Reports</h3>
+                <p className="text-sm text-red-800 dark:text-red-300 mt-1">{error}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearError}
+                  className="mt-3"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -156,8 +364,8 @@ export default function ReportsPage() {
           <h1 className="text-2xl font-bold md:text-3xl">Báo cáo</h1>
           <p className="text-muted-foreground">Phân tích và thống kê hiệu suất làm việc</p>
         </div>
-        <div className="flex gap-2">
-          <Select value={dateRange} onValueChange={setDateRange}>
+        <div className="flex gap-2 flex-wrap">
+          <Select value={dateRange} onValueChange={handleDateRangeChange}>
             <SelectTrigger className="w-[160px]">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue />
@@ -169,28 +377,50 @@ export default function ReportsPage() {
               <SelectItem value="year">Năm nay</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={selectedProject} onValueChange={setSelectedProject}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Dự án" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả dự án</SelectItem>
-              {mockProjects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <QuickExport
-            data={mockTasks}
-            filename="bao-cao-cong-viec"
-            variant="default"
-          />
-          <Button onClick={() => setShowExportDialog(true)}>
-            <Download className="mr-2 h-4 w-4" />
+
+          <Button
+            onClick={handleQuickExport}
+            disabled={loading || isExporting}
+            size="sm"
+          >
+            {loading || isExporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Đang xuất...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Xuất CSV
+              </>
+            )}
+          </Button>
+
+          <Button
+            onClick={() => setShowAdvancedExportDialog(true)}
+            disabled={loading || isExporting}
+            size="sm"
+            variant="outline"
+          >
+            <FileJson className="mr-2 h-4 w-4" />
             Xuất nâng cao
           </Button>
+
+          <ExportReportDialog
+            isOpen={showExportDialog}
+            onOpenChange={setShowExportDialog}
+            onExport={handleExportReport}
+            isLoading={loading}
+            suggestedFilename={`bao-cao-${dateRange}`}
+          />
+
+          <AdvancedExportReportDialog
+            isOpen={showAdvancedExportDialog}
+            onOpenChange={setShowAdvancedExportDialog}
+            onExport={handleExportReport}
+            isLoading={isExporting}
+            suggestedFilename={`bao-cao-${dateRange}`}
+          />
         </div>
       </div>
 
@@ -199,7 +429,7 @@ export default function ReportsPage() {
         {[
           {
             title: "Tổng công việc",
-            value: totalTasks,
+            value: statistics?.totalTasks || 0,
             change: "+12%",
             trend: "up",
             icon: BarChart3,
@@ -207,7 +437,7 @@ export default function ReportsPage() {
           },
           {
             title: "Hoàn thành",
-            value: completedTasks,
+            value: statistics?.completedTasks || 0,
             change: "+8%",
             trend: "up",
             icon: CheckCircle2,
@@ -215,15 +445,15 @@ export default function ReportsPage() {
           },
           {
             title: "Tỷ lệ hoàn thành",
-            value: `${completionRate}%`,
+            value: `${statistics?.completionRate || 0}%`,
             change: "+5%",
             trend: "up",
             icon: TrendingUp,
             color: "text-amber-600 bg-amber-100 dark:bg-amber-900/30",
           },
           {
-            title: "Thành viên hoạt động",
-            value: mockUsers.filter((u) => u.status === "online").length,
+            title: "Dự án hoạt động",
+            value: statistics?.projectsInProgress || 0,
             change: "-2",
             trend: "down",
             icon: Users,
@@ -277,225 +507,231 @@ export default function ReportsPage() {
           {/* First Row - 3 Charts */}
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Task Distribution by Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Phân bổ theo trạng thái</CardTitle>
-                <CardDescription>Tổng {totalTasks} công việc</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={tasksByStatusData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={85}
-                        paddingAngle={3}
-                        dataKey="value"
-                        label={({ percent }) => `${((percent || 0) * 100).toFixed(0)}%`}
-                      >
-                        {tasksByStatusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  {tasksByStatusData.map((item) => (
-                    <div key={item.name} className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-xs text-muted-foreground">{item.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Priority Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Phân bổ theo độ ưu tiên</CardTitle>
-                <CardDescription>Mức độ ưu tiên công việc</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={priorityData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={85}
-                        dataKey="value"
-                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                      >
-                        {priorityData.map((entry, index) => (
-                          <Cell key={`priority-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  {priorityData.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+            {tasksByStatusData.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Phân bổ theo trạng thái</CardTitle>
+                  <CardDescription>Tổng {statistics?.totalTasks || 0} công việc</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={tasksByStatusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={85}
+                          paddingAngle={3}
+                          dataKey="value"
+                          label={({ percent }) => `${((percent || 0) * 100).toFixed(0)}%`}
+                        >
+                          {tasksByStatusData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {tasksByStatusData.map((item) => (
+                      <div key={item.name} className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
                         <span className="text-xs text-muted-foreground">{item.name}</span>
                       </div>
-                      <span className="text-xs font-medium">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Phân bổ theo trạng thái</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Priority Distribution */}
+            {priorityData.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Phân bổ theo độ ưu tiên</CardTitle>
+                  <CardDescription>Mức độ ưu tiên công việc</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={priorityData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={85}
+                          dataKey="value"
+                          label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                        >
+                          {priorityData.map((entry, index) => (
+                            <Cell key={`priority-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {priorityData.map((item) => (
+                      <div key={item.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="text-xs text-muted-foreground">{item.name}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Phân bổ theo độ ưu tiên</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            )}
 
             {/* Project Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Trạng thái dự án</CardTitle>
-                <CardDescription>Tổng {mockProjects.length} dự án</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={projectStatusData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={90}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {projectStatusData.map((entry, index) => (
-                          <Cell key={`project-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            {projectStatusData.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Trạng thái dự án</CardTitle>
+                  <CardDescription>Dự án theo trạng thái</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={projectStatusData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={85}
+                          dataKey="value"
+                          label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                        >
+                          {projectStatusData.map((entry, index) => (
+                            <Cell key={`project-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {projectStatusData.map((item) => (
+                      <div key={item.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="text-xs text-muted-foreground">{item.name}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Trạng thái dự án</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Second Row - 2 Charts */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Weekly Progress */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tiến độ tuần</CardTitle>
-                <CardDescription>Công việc tạo mới và hoàn thành</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={weeklyData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="created" name="Tạo mới" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="completed" name="Hoàn thành" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Top Performers */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Thành viên xuất sắc</CardTitle>
-                <CardDescription>Số lượng công việc hoàn thành</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={topPerformersData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis type="number" className="text-xs" />
-                      <YAxis dataKey="name" type="category" className="text-xs" width={80} />
-                      <Tooltip />
-                      <Bar dataKey="tasks" name="Hoàn thành" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Third Row - 2 Charts */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Monthly Trend */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Xu hướng năm</CardTitle>
-                <CardDescription>Số lượng công việc hoàn thành theo tháng</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip />
-                      <Line
-                        type="monotone"
-                        dataKey="tasks"
-                        name="Công việc"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        dot={{ fill: "#3b82f6", r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Completion Rate Trend */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tỷ lệ hoàn thành</CardTitle>
-                <CardDescription>Hiệu suất hoàn thành theo tuần</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={completionRateData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="name" className="text-xs" />
-                      <YAxis className="text-xs" domain={[0, 100]} />
-                      <Tooltip formatter={(value) => `${value}%`} />
-                      <Line
-                        type="monotone"
-                        dataKey="rate"
-                        name="Tỷ lệ %"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        dot={{ fill: "#10b981", r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            {completionTrendData.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Xu hướng hoàn thành</CardTitle>
+                  <CardDescription>Tỷ lệ hoàn thành theo ngày</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={completionTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => `${value}%`} />
+                        <Line
+                          type="monotone"
+                          dataKey="rate"
+                          stroke="#3b82f6"
+                          dot={false}
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Xu hướng hoàn thành</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* User Activity */}
+            {userActivityData.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Hoạt động người dùng</CardTitle>
+                  <CardDescription>Công việc hoàn thành theo thành viên</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={userActivityData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="tasks" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Hoạt động người dùng</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartSkeleton />
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
+        {/* Team Tab */}
         <TabsContent value="team" className="space-y-6">
           <Card>
             <CardHeader>
@@ -503,103 +739,134 @@ export default function ReportsPage() {
               <CardDescription>Thống kê công việc theo thành viên</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {teamPerformance.map((member, index) => (
-                  <motion.div
-                    key={member.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="flex items-center gap-4"
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={member.avatarUrl || "/placeholder.svg"} alt={member.name} />
-                      <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <div>
-                          <p className="font-medium">{member.name}</p>
-                          <p className="text-sm text-muted-foreground">{member.roleDisplayName}</p>
+              {loading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : teamPerformance.length > 0 ? (
+                <div className="space-y-4">
+                  {teamPerformance.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                            <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{member.name}</p>
+                            <p className="text-xs text-muted-foreground">{member.email}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-medium">{member.rate}%</p>
-                          <p className="text-sm text-muted-foreground">
-                            {member.completedTasks}/{member.totalTasks} việc
-                          </p>
+                        <div className="flex gap-4 text-xs text-muted-foreground ml-13">
+                          <span>Giao: {member.assignedTasks}</span>
+                          <span>Hoàn thành: {member.completedTasks}</span>
+                          <span>Đang xử lý: {member.pendingTasks}</span>
                         </div>
                       </div>
-                      <Progress value={member.rate} className="h-2" />
+                      <div className="text-right min-w-24">
+                        <div className="w-16 h-2 bg-muted rounded-full mb-2">
+                          <div
+                            className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all"
+                            style={{ width: `${Math.min(member.completionRate, 100)}%` }}
+                          />
+                        </div>
+                        <p className="font-semibold text-sm">{member.completionRate}%</p>
+                      </div>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Không có dữ liệu hiệu suất đội ngũ</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Projects Tab */}
         <TabsContent value="projects" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {mockProjects.map((project, index) => {
-              const projectTasks = mockTasks.filter((t) => t.projectId === project.id)
-              const completed = projectTasks.filter((t) => t.status === "done").length
-              const progress = projectTasks.length > 0 ? Math.round((completed / projectTasks.length) * 100) : 0
-
-              return (
-                <motion.div
-                  key={project.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="flex items-start gap-4 mb-4">
-                        <div
-                          className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
-                          style={{ backgroundColor: project.color }}
-                        >
-                          {project.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold truncate">{project.name}</h3>
-                          <p className="text-sm text-muted-foreground">{projectTasks.length} công việc</p>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tiến độ</span>
-                          <span className="font-medium">{progress}%</span>
-                        </div>
-                        <Progress value={progress} className="h-2" />
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          <div className="text-center p-2 bg-muted/50 rounded">
-                            <p className="text-lg font-bold text-green-600">{completed}</p>
-                            <p className="text-xs text-muted-foreground">Hoàn thành</p>
+          <Card>
+            <CardHeader>
+              <CardTitle>Dự án</CardTitle>
+              <CardDescription>Thống kê dự án</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : projectsStatistics.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {projectsStatistics.map((project) => (
+                    <motion.div
+                      key={project.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      <Card className="border-l-4" style={{
+                        borderLeftColor: project.status === 'ACTIVE' ? '#3b82f6' : project.status === 'ON_HOLD' ? '#f59e0b' : '#10b981'
+                      }}>
+                        <CardContent className="p-4">
+                          <div className="space-y-3">
+                            <div>
+                              <p className="font-semibold text-sm">{project.name}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Trạng thái: <span className="font-medium">{
+                                  project.status === 'ACTIVE' ? 'Hoạt động' :
+                                  project.status === 'ON_HOLD' ? 'Tạm dừng' :
+                                  'Hoàn thành'
+                                }</span>
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div className="bg-muted p-2 rounded">
+                                <p className="text-lg font-bold">{project.totalTasks}</p>
+                                <p className="text-xs text-muted-foreground">Tổng cộng</p>
+                              </div>
+                              <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded">
+                                <p className="text-lg font-bold text-green-600 dark:text-green-400">{project.completedTasks}</p>
+                                <p className="text-xs text-green-700 dark:text-green-300">Hoàn thành</p>
+                              </div>
+                              <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+                                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{project.inProgressTasks}</p>
+                                <p className="text-xs text-blue-700 dark:text-blue-300">Đang xử lý</p>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs text-muted-foreground">Tiến độ hoàn thành</p>
+                                <p className="text-sm font-semibold">{project.completionRate}%</p>
+                              </div>
+                              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all"
+                                  style={{ width: `${Math.min(project.completionRate, 100)}%` }}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-center p-2 bg-muted/50 rounded">
-                            <p className="text-lg font-bold text-amber-600">{projectTasks.length - completed}</p>
-                            <p className="text-xs text-muted-foreground">Còn lại</p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )
-            })}
-          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Không có dữ liệu dự án</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Export Dialog */}
-      <ExportDialog
-        open={showExportDialog}
-        onOpenChange={setShowExportDialog}
-        data={mockTasks}
-        defaultFilename="bao-cao-cong-viec"
-        availableFields={exportFields}
-      />
     </div>
   )
 }

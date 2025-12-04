@@ -340,7 +340,7 @@ export interface Note {
   id: string
   title: string
   content: string
-  tags: string[]
+  tags: string[] | null
   isShared: boolean
   sharedWith: User[]
   createdBy: User

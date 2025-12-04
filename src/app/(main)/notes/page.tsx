@@ -1,5 +1,7 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import { useNotesStore } from "@/stores/notes-store"
+import { useProjectsStore } from "@/stores/projects-store"
 import { AnimatePresence } from "framer-motion"
 import {
   Plus,
@@ -28,14 +30,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { mockNotes, mockProjects, mockUsers } from "@/mocks/data"
+import { mockProjects, mockUsers } from "@/mocks/data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import type { Note } from "@/types"
 import { NoteEditor } from "@/components/notes/note-editor"
 import { NoteList } from "@/components/notes/note-list"
+import { EmptyNotes } from "@/components/notes/empty-notes"
 import { NoteManager } from "@/lib/notes"
-import { RichEditor } from "@/components/editor/rich-editor"
 
 type ViewMode = "grid" | "list"
 type NoteTab = "note" | "todo"
@@ -48,8 +50,10 @@ interface TodoItem {
 }
 
 export default function NotesPage() {
+  const notesStore = useNotesStore()
+  const projectsStore = useProjectsStore()
+  
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
-  const [searchQuery, setSearchQuery] = useState("")
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>("view")
   const [projectFilter, setProjectFilter] = useState<string>("all")
@@ -58,14 +62,51 @@ export default function NotesPage() {
   const [newTodoText, setNewTodoText] = useState("")
   const [showPinnedOnly, setShowPinnedOnly] = useState(false)
 
+  // Fetch notes on mount and reset filters
+  useEffect(() => {
+    notesStore.clearFilters()
+    notesStore.fetchNotes().catch((error) => {
+      toast.error("Không thể tải ghi chú")
+      console.error("Failed to fetch notes:", error)
+    })
+  }, [])
+
+  // Fetch projects on mount
+  useEffect(() => {
+    projectsStore.fetchProjects().catch((error) => {
+      console.error("Failed to fetch projects:", error)
+    })
+  }, [])
+
   // Filter and sort notes
   const filteredNotes = useMemo(() => {
-    return NoteManager.filterNotes(mockNotes, {
-      search: searchQuery,
-      projectId: projectFilter,
-      isPinned: showPinnedOnly ? true : undefined,
-    })
-  }, [searchQuery, projectFilter, showPinnedOnly])
+    const notes = Array.isArray(notesStore.notes) ? notesStore.notes : []
+    let filtered = [...notes]
+
+    // Apply search query
+    if (notesStore.searchQuery) {
+      const query = notesStore.searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (n) =>
+          n.title.toLowerCase().includes(query) ||
+          n.content.toLowerCase().includes(query)
+      )
+    }
+
+    // Apply project filter
+    if (projectFilter !== "all") {
+      filtered = filtered.filter((n) =>
+        projectFilter === "personal" ? !n.projectId : n.projectId === projectFilter
+      )
+    }
+
+    // Apply pinned filter
+    if (showPinnedOnly) {
+      filtered = filtered.filter((n) => n.isPinned)
+    }
+
+    return filtered
+  }, [notesStore.notes, notesStore.searchQuery, projectFilter, showPinnedOnly])
 
   const pinnedNotes = filteredNotes.filter((n) => n.isPinned)
   const unpinnedNotes = filteredNotes.filter((n) => !n.isPinned)
@@ -88,9 +129,29 @@ export default function NotesPage() {
   }
 
   const handleSave = async (noteData: Partial<Note>) => {
-    // TODO: Call API
-    toast.success(editorMode === "create" ? "Đã tạo ghi chú mới" : "Đã lưu thay đổi")
-    setEditorMode("view")
+    try {
+      if (editorMode === "create") {
+        await notesStore.createNote({
+          title: noteData.title!,
+          content: noteData.content || "",
+          projectId: noteData.projectId,
+          tagIds: (noteData.tags || []) as string[],
+        })
+        toast.success("Đã tạo ghi chú mới")
+      } else if (selectedNote) {
+        await notesStore.updateNote(selectedNote.id, {
+          title: noteData.title,
+          content: noteData.content,
+          projectId: noteData.projectId,
+        })
+        toast.success("Đã lưu thay đổi")
+      }
+      setEditorMode("view")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
+      toast.error(errorMessage)
+      console.error("Failed to save note:", error)
+    }
   }
 
   const handleCancel = () => {
@@ -100,28 +161,45 @@ export default function NotesPage() {
     setEditorMode("view")
   }
 
-  const handleDelete = (note: Note) => {
-    // TODO: Call API
-    toast.success("Đã xóa ghi chú")
-    if (selectedNote?.id === note.id) {
-      setSelectedNote(null)
+  const handleDelete = async (note: Note) => {
+    try {
+      await notesStore.deleteNote(note.id)
+      toast.success("Đã xóa ghi chú")
+      if (selectedNote?.id === note.id) {
+        setSelectedNote(null)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
+      toast.error(errorMessage)
+      console.error("Failed to delete note:", error)
     }
   }
 
-  const handleDuplicate = (note: Note) => {
-    const duplicated = NoteManager.duplicateNote(note)
-    // TODO: Call API to create
-    toast.success("Đã nhân bản ghi chú")
+  const handleDuplicate = async (note: Note) => {
+    try {
+      await notesStore.duplicateNote(note.id)
+      toast.success("Đã nhân bản ghi chú")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
+      toast.error(errorMessage)
+      console.error("Failed to duplicate note:", error)
+    }
   }
 
-  const handleTogglePin = (note: Note) => {
-    // TODO: Call API
-    toast.success(note.isPinned ? "Đã bỏ ghim" : "Đã ghim ghi chú")
+  const handleTogglePin = async (note: Note) => {
+    try {
+      await notesStore.togglePin(note.id)
+      toast.success(note.isPinned ? "Đã bỏ ghim" : "Đã ghim ghi chú")
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
+      toast.error(errorMessage)
+      console.error("Failed to toggle pin:", error)
+    }
   }
 
   const handleShare = (note: Note) => {
-    // TODO: Implement share dialog
-    toast.info("Tính năng chia sẻ đang phát triển")
+    // TODO: Implement share dialog with user selection
+    toast.info("Tính năng chia sẻ sẽ được triển khai")
   }
 
   const handleAddTodo = () => {
@@ -143,7 +221,14 @@ export default function NotesPage() {
     setTodos(todos.filter((todo) => todo.id !== id))
   }
 
-  const stats = NoteManager.getNotesStats(mockNotes)
+  const hasFilters = !!(notesStore.searchQuery || projectFilter !== "all" || showPinnedOnly)
+
+  const notes = Array.isArray(notesStore.notes) ? notesStore.notes : []
+  const stats = {
+    total: notes.length,
+    pinned: notes.filter((n) => n.isPinned).length,
+    shared: notes.filter((n) => n.isShared).length,
+  }
 
   return (
     <div className="space-y-6">
@@ -155,7 +240,7 @@ export default function NotesPage() {
             {stats.total} ghi chú • {stats.pinned} đã ghim • {stats.shared} đã chia sẻ
           </p>
         </div>
-        <Button onClick={handleCreate}>
+        <Button onClick={handleCreate} disabled={notesStore.loading}>
           <Plus className="mr-2 h-4 w-4" />
           Tạo ghi chú
         </Button>
@@ -172,8 +257,8 @@ export default function NotesPage() {
                   <Input
                     placeholder="Tìm kiếm ghi chú..."
                     className="pl-9"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={notesStore.searchQuery}
+                    onChange={(e) => notesStore.setSearchQuery(e.target.value)}
                   />
                 </div>
                 <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -189,7 +274,7 @@ export default function NotesPage() {
                         Personal
                       </div>
                     </SelectItem>
-                    {mockProjects.map((project) => (
+                    {projectsStore.projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-2 rounded" style={{ backgroundColor: project.color }} />
@@ -232,20 +317,26 @@ export default function NotesPage() {
             </div>
 
             {/* Active Filters */}
-            {(searchQuery || projectFilter !== "all" || showPinnedOnly) && (
+            {hasFilters && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">Bộ lọc:</span>
-                {searchQuery && (
+                {notesStore.searchQuery && (
                   <Badge variant="secondary" className="gap-1">
-                    Search: {searchQuery}
-                    <button onClick={() => setSearchQuery("")} className="hover:text-destructive">
+                    Search: {notesStore.searchQuery}
+                    <button
+                      onClick={() => notesStore.setSearchQuery("")}
+                      className="hover:text-destructive"
+                    >
                       <XIcon className="h-3 w-3" />
                     </button>
                   </Badge>
                 )}
                 {projectFilter !== "all" && (
                   <Badge variant="secondary" className="gap-1">
-                    Dự án: {projectFilter === "personal" ? "Personal" : mockProjects.find((p) => p.id === projectFilter)?.name}
+                    Dự án:{" "}
+                    {projectFilter === "personal"
+                      ? "Personal"
+                      : projectsStore.projects.find((p) => p.id === projectFilter)?.name}
                     <button onClick={() => setProjectFilter("all")} className="hover:text-destructive">
                       <XIcon className="h-3 w-3" />
                     </button>
@@ -263,7 +354,7 @@ export default function NotesPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setSearchQuery("")
+                    notesStore.setSearchQuery("")
                     setProjectFilter("all")
                     setShowPinnedOnly(false)
                   }}
@@ -277,75 +368,88 @@ export default function NotesPage() {
             {/* Stats */}
             <div className="text-sm text-muted-foreground">
               Hiển thị {filteredNotes.length} / {stats.total} ghi chú
+              {notesStore.loading && <span className="ml-2">đang tải...</span>}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Notes */}
-      {!showPinnedOnly && pinnedNotes.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Pin className="h-4 w-4" />
-            Đã ghim ({pinnedNotes.length})
-          </h3>
-          <NoteList
-            notes={pinnedNotes}
-            projects={mockProjects}
-            viewMode={viewMode}
-            onNoteClick={handleNoteClick}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-            onTogglePin={handleTogglePin}
-            onShare={handleShare}
-          />
-        </div>
-      )}
-
-      {!showPinnedOnly && unpinnedNotes.length > 0 && (
-        <div className="space-y-4">
-          {pinnedNotes.length > 0 && (
-            <h3 className="text-sm font-medium text-muted-foreground">Khác ({unpinnedNotes.length})</h3>
-          )}
-          <NoteList
-            notes={unpinnedNotes}
-            projects={mockProjects}
-            viewMode={viewMode}
-            onNoteClick={handleNoteClick}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-            onTogglePin={handleTogglePin}
-            onShare={handleShare}
-          />
-        </div>
-      )}
-
-      {showPinnedOnly && filteredNotes.length > 0 && (
-        <NoteList
-          notes={filteredNotes}
-          projects={mockProjects}
-          viewMode={viewMode}
-          onNoteClick={handleNoteClick}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onDuplicate={handleDuplicate}
-          onTogglePin={handleTogglePin}
-          onShare={handleShare}
-        />
-      )}
-
-      {filteredNotes.length === 0 && (
+      {/* Loading State */}
+      {notesStore.loading && filteredNotes.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16">
-          <StickyNote className="h-16 w-16 text-muted-foreground/50" />
-          <h3 className="mt-4 text-lg font-semibold">Không tìm thấy ghi chú</h3>
-          <p className="text-muted-foreground mb-4">Thử thay đổi bộ lọc hoặc tạo ghi chú mới</p>
-          <Button onClick={handleCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Tạo ghi chú đầu tiên
-          </Button>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="mt-2 text-muted-foreground">Đang tải ghi chú...</p>
         </div>
+      )}
+
+      {/* Notes */}
+      {!notesStore.loading && (
+        <>
+          {!showPinnedOnly && pinnedNotes.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Pin className="h-4 w-4" />
+                Đã ghim ({pinnedNotes.length})
+              </h3>
+              <NoteList
+                notes={pinnedNotes}
+                projects={projectsStore.projects}
+                viewMode={viewMode}
+                onNoteClick={handleNoteClick}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onDuplicate={handleDuplicate}
+                onTogglePin={handleTogglePin}
+                onShare={handleShare}
+              />
+            </div>
+          )}
+
+          {!showPinnedOnly && unpinnedNotes.length > 0 && (
+            <div className="space-y-4">
+              {pinnedNotes.length > 0 && (
+                <h3 className="text-sm font-medium text-muted-foreground">Khác ({unpinnedNotes.length})</h3>
+              )}
+              <NoteList
+                notes={unpinnedNotes}
+                projects={projectsStore.projects}
+                viewMode={viewMode}
+                onNoteClick={handleNoteClick}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onDuplicate={handleDuplicate}
+                onTogglePin={handleTogglePin}
+                onShare={handleShare}
+              />
+            </div>
+          )}
+
+          {showPinnedOnly && filteredNotes.length > 0 && (
+            <NoteList
+              notes={filteredNotes}
+              projects={projectsStore.projects}
+              viewMode={viewMode}
+              onNoteClick={handleNoteClick}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
+              onTogglePin={handleTogglePin}
+              onShare={handleShare}
+            />
+          )}
+
+          {filteredNotes.length === 0 && (
+            <EmptyNotes
+              hasFilters={hasFilters}
+              onCreateNote={handleCreate}
+              onClearFilters={() => {
+                notesStore.setSearchQuery("")
+                setProjectFilter("all")
+                setShowPinnedOnly(false)
+              }}
+            />
+          )}
+        </>
       )}
 
       {/* Note Detail/Editor Dialog */}
@@ -367,7 +471,7 @@ export default function NotesPage() {
               <div className="overflow-y-auto flex-1">
                 <NoteEditor
                   note={editorMode === "edit" ? selectedNote! : undefined}
-                  projects={mockProjects}
+                  projects={projectsStore.projects}
                   users={mockUsers}
                   onSave={handleSave}
                   onCancel={handleCancel}
@@ -381,7 +485,8 @@ export default function NotesPage() {
                   <div className="flex items-center gap-2 mb-2">
                     {selectedNote.isPinned && <Pin className="h-4 w-4 text-amber-500 fill-amber-500" />}
                     <span className="text-sm text-muted-foreground">
-                      {mockProjects.find((p) => p.id === selectedNote.projectId)?.name || "Personal"}
+                      {projectsStore.projects.find((p) => p.id === selectedNote.projectId)?.name ||
+                        "Personal"}
                     </span>
                   </div>
                   <DialogTitle className="text-2xl">{selectedNote.title}</DialogTitle>
@@ -391,7 +496,11 @@ export default function NotesPage() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as NoteTab)} className="flex-1">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => setActiveTab(v as NoteTab)}
+                  className="flex-1"
+                >
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="note">
                       <StickyNote className="mr-2 h-4 w-4" />
@@ -450,8 +559,16 @@ export default function NotesPage() {
                             key={todo.id}
                             className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
                           >
-                            <Checkbox checked={todo.completed} onCheckedChange={() => handleToggleTodo(todo.id)} />
-                            <span className={cn("flex-1", todo.completed && "line-through text-muted-foreground")}>
+                            <Checkbox
+                              checked={todo.completed}
+                              onCheckedChange={() => handleToggleTodo(todo.id)}
+                            />
+                            <span
+                              className={cn(
+                                "flex-1",
+                                todo.completed && "line-through text-muted-foreground"
+                              )}
+                            >
                               {todo.text}
                             </span>
                             <Button
@@ -480,7 +597,9 @@ export default function NotesPage() {
                           <div
                             className="h-full bg-primary transition-all"
                             style={{
-                              width: `${todos.length > 0 ? (todos.filter((t) => t.completed).length / todos.length) * 100 : 0}%`,
+                              width: `${todos.length > 0
+                                ? (todos.filter((t) => t.completed).length / todos.length) * 100
+                                : 0}%`,
                             }}
                           />
                         </div>
@@ -491,10 +610,20 @@ export default function NotesPage() {
 
                 <DialogFooter className="flex-row justify-between sm:justify-between">
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleDuplicate(selectedNote)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicate(selectedNote)}
+                      disabled={notesStore.loadingNoteId === selectedNote.id}
+                    >
                       Nhân bản
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(selectedNote)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(selectedNote)}
+                      disabled={notesStore.loadingNoteId === selectedNote.id}
+                    >
                       Xóa
                     </Button>
                   </div>

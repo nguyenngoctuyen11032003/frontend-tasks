@@ -24,52 +24,14 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useSocketNotifications } from "@/hooks/use-socket"
+import { useNotificationsStore } from "@/stores/notifications-store"
 import type { Notification } from "@/types"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
-const mockNotifications: Notification[] = [
-  {
-    id: "notif-1",
-    title: "Công việc mới được giao",
-    message: "Nguyễn Văn A đã giao cho bạn công việc: Thiết kế UI trang chủ",
-    type: "task_assigned",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    link: "/tasks",
-  },
-  {
-    id: "notif-2",
-    title: "Bình luận mới",
-    message: "Trần Thị B đã bình luận trong công việc: API Integration",
-    type: "comment",
-    read: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    link: "/tasks",
-  },
-  {
-    id: "notif-3",
-    title: "Deadline sắp đến",
-    message: "Công việc 'Review code' sẽ hết hạn trong 2 giờ nữa",
-    type: "deadline",
-    read: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-    link: "/tasks",
-  },
-  {
-    id: "notif-4",
-    title: "Dự án mới",
-    message: "Bạn đã được thêm vào dự án: E-commerce Platform",
-    type: "project_added",
-    read: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    link: "/projects",
-  },
-]
-
 export function NotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
   const [preferences, setPreferences] = useState({
     taskAssigned: true,
     taskCompleted: true,
@@ -79,50 +41,40 @@ export function NotificationBell() {
     projectAdded: true,
   })
 
+  // Store subscriptions
+  const notifications = useNotificationsStore((state) => state.notifications)
+  const unreadCount = useNotificationsStore((state) => state.unreadCount)
+  const loading = useNotificationsStore((state) => state.loading)
+  const fetchNotifications = useNotificationsStore((state) => state.fetchNotifications)
+  const markAsRead = useNotificationsStore((state) => state.markAsRead)
+  const markAllAsRead = useNotificationsStore((state) => state.markAllAsRead)
+  const deleteNotification = useNotificationsStore((state) => state.deleteNotification)
+  const deleteAllNotifications = useNotificationsStore((state) => state.deleteAllNotifications)
+  const addNotification = useNotificationsStore((state) => state.addNotification)
+  const subscribeToSocket = useNotificationsStore((state) => state.subscribeToSocket)
+
   // Listen for real-time notifications
   const socketNotifications = useSocketNotifications()
 
+  // Initialize: fetch notifications on component mount and subscribe to socket
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchNotifications()
+      subscribeToSocket()
+      setIsInitialized(true)
+    }
+  }, [isInitialized, fetchNotifications, subscribeToSocket])
+
+  // Real-time: add new notifications from socket
   useEffect(() => {
     if (socketNotifications.length > 0) {
       const newNotif = socketNotifications[socketNotifications.length - 1]
-      setNotifications((prev) => [
-        {
-          id: `notif-${Date.now()}`,
-          title: newNotif.title,
-          message: newNotif.message,
-          type: newNotif.type,
-          read: false,
-          createdAt: new Date().toISOString(),
-          link: newNotif.link,
-        },
-        ...prev,
-      ])
-      toast.info(newNotif.title, { description: newNotif.message })
+      addNotification(newNotif)
+      toast.info(newNotif.title || "Thông báo mới", {
+        description: newNotif.message,
+      })
     }
-  }, [socketNotifications])
-
-  const unreadCount = notifications.filter((n) => !n.read).length
-
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    )
-  }
-
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-    toast.success("Đã đánh dấu tất cả là đã đọc")
-  }
-
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-    toast.success("Đã xóa thông báo")
-  }
-
-  const clearAll = () => {
-    setNotifications([])
-    toast.success("Đã xóa tất cả thông báo")
-  }
+  }, [socketNotifications, addNotification])
 
   const getTimeAgo = (dateString: string) => {
     const now = Date.now()
@@ -185,7 +137,7 @@ export function NotificationBell() {
                 size="sm"
                 className="h-8 text-xs"
                 onClick={markAllAsRead}
-                disabled={unreadCount === 0}
+                disabled={unreadCount === 0 || loading}
               >
                 <Check className="mr-1 h-3 w-3" />
                 Đã đọc
@@ -321,6 +273,7 @@ export function NotificationBell() {
                             size="sm"
                             className="h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => markAsRead(notification.id)}
+                            disabled={loading}
                           >
                             Đánh dấu đã đọc
                           </Button>
@@ -334,6 +287,7 @@ export function NotificationBell() {
                       size="icon"
                       className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity absolute top-2 right-2"
                       onClick={() => deleteNotification(notification.id)}
+                      disabled={loading}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -352,7 +306,8 @@ export function NotificationBell() {
                   variant="ghost"
                   size="sm"
                   className="w-full text-xs"
-                  onClick={clearAll}
+                  onClick={deleteAllNotifications}
+                  disabled={loading}
                 >
                   <Trash2 className="mr-2 h-3 w-3" />
                   Xóa tất cả

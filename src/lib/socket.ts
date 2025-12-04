@@ -140,6 +140,15 @@ class SocketClient {
     return () => this.socket?.off("notification:new", callback)
   }
 
+  onUnreadCount(callback: (count: number) => void) {
+    if (!this.socket) return () => {}
+    this.socket.on("notification:unread-count", (data: { count: number }) => {
+      console.log(`[Socket] Received unread-count event:`, data)
+      callback(data.count)
+    })
+    return () => this.socket?.off("notification:unread-count")
+  }
+
   // Emit events
   sendMessage(chatId: string, content: string, type: "text" | "image" | "file" = "text") {
     if (!this.socket || !this.connected) {

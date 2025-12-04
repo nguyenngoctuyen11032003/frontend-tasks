@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Bell,
@@ -27,20 +27,51 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { useNotifications } from "@/hooks/use-notifications"
+import { useNotificationsStore } from "@/stores/notifications-store"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow } from "date-fns"
 import { vi } from "date-fns/locale"
 
 export function NotificationCenter() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications()
   const [isOpen, setIsOpen] = useState(false)
   const [filter, setFilter] = useState<"all" | "unread">("all")
+  const [isInitialized, setIsInitialized] = useState(false)
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (filter === "unread") return !n.read
-    return true
-  })
+  // Store subscriptions
+  const notifications = useNotificationsStore((state) => state.notifications)
+  const unreadCount = useNotificationsStore((state) => state.unreadCount)
+  const loading = useNotificationsStore((state) => state.loading)
+  const fetchNotifications = useNotificationsStore((state) => state.fetchNotifications)
+  const fetchUnreadCount = useNotificationsStore((state) => state.fetchUnreadCount)
+  const fetchNotificationsByFilter = useNotificationsStore((state) => state.fetchNotificationsByFilter)
+  const markAsRead = useNotificationsStore((state) => state.markAsRead)
+  const markAllAsRead = useNotificationsStore((state) => state.markAllAsRead)
+  const deleteNotification = useNotificationsStore((state) => state.deleteNotification)
+  const subscribeToSocket = useNotificationsStore((state) => state.subscribeToSocket)
+  const deleteAllNotifications = useNotificationsStore((state) => state.deleteAllNotifications)
+
+  // Initialize on mount
+  useEffect(() => {
+    if (!isInitialized) {
+      fetchNotifications()
+      fetchUnreadCount()
+      subscribeToSocket()
+      setIsInitialized(true)
+    }
+  }, [isInitialized, fetchNotifications, fetchUnreadCount, subscribeToSocket])
+
+  // Fetch notifications when dropdown opens or filter changes
+  useEffect(() => {
+    if (isOpen) {
+      console.log(`[Component] Tab changed or popover opened: filter=${filter}`)
+      fetchNotificationsByFilter(filter)
+    }
+  }, [isOpen, filter, fetchNotificationsByFilter])
+
+  // Đảm bảo tab 'Chưa đọc' chỉ hiển thị notification chưa đọc
+  const filteredNotifications = filter === "unread"
+    ? notifications.filter((n) => !n.read)
+    : notifications
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -103,6 +134,7 @@ export function NotificationCenter() {
                 size="sm"
                 onClick={markAllAsRead}
                 className="h-8 text-xs"
+                disabled={loading}
               >
                 <CheckCheck className="h-3 w-3 mr-1" />
                 Đánh dấu đã đọc
@@ -113,20 +145,20 @@ export function NotificationCenter() {
 
         <div className="flex items-center gap-2 px-4 py-2 border-b">
           <Button
+            variant={filter === "unread" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setFilter("unread")}
+            className="h-7 text-xs"
+          >
+            Chưa đọc ({notifications.filter(n => !n.read).length})
+          </Button>
+          <Button
             variant={filter === "all" ? "default" : "ghost"}
             size="sm"
             onClick={() => setFilter("all")}
             className="h-7 text-xs"
           >
             Tất cả
-          </Button>
-          <Button
-            variant={filter === "unread" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setFilter("unread")}
-            className="h-7 text-xs"
-          >
-            Chưa đọc ({unreadCount})
           </Button>
         </div>
 
@@ -148,7 +180,15 @@ export function NotificationCenter() {
                     "relative p-4 border-b hover:bg-accent transition-colors cursor-pointer",
                     !notification.read && "bg-blue-50/50 dark:bg-blue-950/20"
                   )}
-                  onClick={() => markAsRead(notification.id)}
+                  onClick={() => {
+                    // Nếu đang ở tab 'Chưa đọc', mark as read và remove khỏi list
+                    // Nếu ở tab 'Tất cả', chỉ mark as read (không remove)
+                    if (filter === "unread") {
+                      markAsRead(notification.id)
+                    } else {
+                      if (!notification.read) markAsRead(notification.id)
+                    }
+                  }}
                 >
                   <div className="flex gap-3">
                     <div className="shrink-0 mt-1">
@@ -178,6 +218,7 @@ export function NotificationCenter() {
                             e.stopPropagation()
                             deleteNotification(notification.id)
                           }}
+                          disabled={loading}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -192,9 +233,27 @@ export function NotificationCenter() {
 
         {filteredNotifications.length > 0 && (
           <div className="p-2 border-t">
-            <Button variant="ghost" size="sm" className="w-full text-xs">
-              Xem tất cả thông báo
-            </Button>
+            {filter === "unread" ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs"
+                onClick={markAllAsRead}
+                disabled={loading}
+              >
+                Đọc tất cả thông báo
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs"
+                onClick={deleteAllNotifications}
+                disabled={loading}
+              >
+                Xóa tất cả thông báo
+              </Button>
+            )}
           </div>
         )}
       </PopoverContent>

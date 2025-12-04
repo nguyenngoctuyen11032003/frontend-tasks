@@ -173,3 +173,21 @@ export function useSocketNotifications() {
 
   return notifications
 }
+
+// Hook for unread count updates
+export function useSocketUnreadCount() {
+  const { isConnected } = useSocket()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!isConnected) return
+
+    const unsubscribe = socketClient.onUnreadCount((count: number) => {
+      setUnreadCount(count)
+    })
+
+    return unsubscribe
+  }, [isConnected])
+
+  return unreadCount
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Calendar,
@@ -81,6 +81,8 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false)
   const [deleteCommentId, setDeleteCommentId] = useState<string | null>(null)
   const [isDeleteCommentDialogOpen, setIsDeleteCommentDialogOpen] = useState(false)
+  const commentsEndRef = useRef<HTMLDivElement>(null)
+  const commentsContainerRef = useRef<HTMLDivElement>(null)
 
   // Get stores
   const {
@@ -106,6 +108,19 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
       fetchActivityLogs()
     }
   }, [open, task?.id])
+
+  // Auto scroll to bottom when comments change
+  useEffect(() => {
+    if (commentsContainerRef.current) {
+      setTimeout(() => {
+        const scrollHeight = commentsContainerRef.current?.scrollHeight || 0
+        commentsContainerRef.current?.scrollTo({
+          top: scrollHeight,
+          behavior: "smooth",
+        })
+      }, 100)
+    }
+  }, [comments])
 
   const fetchUsers = async () => {
     setLoadingUsers(true)
@@ -500,7 +515,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="activity">Hoạt động</TabsTrigger>
                     <TabsTrigger value="comments">
-                      Bình luận ({task.commentsCount})
+                      Bình luận ({comments.length})
                     </TabsTrigger>
                     <TabsTrigger value="files">
                       <FileText className="h-4 w-4 mr-1" />
@@ -544,10 +559,10 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                       </div>
                     )}
                   </TabsContent>
-                  <TabsContent value="comments" className="space-y-4">
-                    <div className="space-y-4">
+                  <TabsContent value="comments" className="space-y-4 h-[400px] flex flex-col">
+                    <div className="space-y-4 flex-1 flex flex-col">
                       {/* New Comment Form */}
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 flex-shrink-0">
                         <Avatar className="h-8 w-8">
                           <AvatarImage src={currentUser?.avatarUrl || "/placeholder.svg"} />
                           <AvatarFallback>{getInitials(currentUser?.name || "U")}</AvatarFallback>
@@ -561,16 +576,15 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                           />
                           <Button 
                             onClick={async () => {
-                              if (!comment.trim() || !task) return
+                              if (!comment.trim() || !task || !currentUser) return
                               try {
-                                await CommentsService.createComment(task.id, { content: comment.trim() })
+                                const newComment = await CommentsService.createComment(task.id, { content: comment.trim() })
+                                // Update comments in real-time
+                                setComments([...comments, newComment])
                                 setComment("")
-                                toast.success("Đã gửi bình luận")
-                                // Refresh both comments and activity logs
-                                await Promise.all([
-                                  fetchComments(),
-                                  fetchActivityLogs()
-                                ])
+                                toast.success("Đã gửi bình luận thành công! 🎉")
+                                // Refresh activity logs in background
+                                fetchActivityLogs()
                               } catch (error: any) {
                                 toast.error(error?.message || "Không thể gửi bình luận")
                               }
@@ -582,22 +596,39 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                         </div>
                       </div>
 
-                      <Separator />
+                      <Separator className="flex-shrink-0" />
 
-                      {/* Comments List */}
-                      {loadingComments ? (
-                        <div className="text-center py-8 text-sm text-muted-foreground">
-                          Đang tải bình luận...
-                        </div>
-                      ) : comments.length === 0 ? (
-                        <div className="text-center py-8 text-sm text-muted-foreground">
-                          Chưa có bình luận nào
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {comments.map((c) => (
-                            <div key={c.id} className="flex gap-3">
-                              <Avatar className="h-8 w-8">
+                      {/* Comments List - Scrollable Container */}
+                      <div 
+                        ref={commentsContainerRef}
+                        className="flex-1 overflow-y-auto space-y-4 pr-4"
+                      >
+                        {loadingComments ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">
+                            Đang tải bình luận...
+                          </div>
+                        ) : comments.length === 0 ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">
+                            Chưa có bình luận nào
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                          {comments.map((c, index) => (
+                            <motion.div 
+                              key={c.id} 
+                              className="flex gap-3 p-3 rounded-lg bg-accent/50 hover:bg-accent/70 transition-colors"
+                              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                              transition={{ 
+                                duration: 0.4, 
+                                delay: index * 0.05,
+                                type: "spring",
+                                stiffness: 300,
+                                damping: 30
+                              }}
+                            >
+                              <Avatar className="h-8 w-8 flex-shrink-0">
                                 <AvatarImage src={c.author?.avatarUrl || "/placeholder.svg"} />
                                 <AvatarFallback>{getInitials(c.author?.name || "U")}</AvatarFallback>
                               </Avatar>
@@ -608,7 +639,12 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                 </div>
                                 <p className="text-sm">{c.content}</p>
                                 {currentUser?.id === c.author?.id && (
-                                  <div className="flex gap-2 mt-2">
+                                  <motion.div 
+                                    className="flex gap-2 mt-2"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.2 }}
+                                  >
                                     <Button 
                                       variant="ghost" 
                                       size="sm" 
@@ -621,13 +657,15 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                                       <Trash2 className="h-3 w-3 mr-1" />
                                       Xóa
                                     </Button>
-                                  </div>
+                                  </motion.div>
                                 )}
                               </div>
-                            </div>
+                            </motion.div>
                           ))}
+                          <div ref={commentsEndRef} />
                         </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </TabsContent>
 
@@ -853,6 +891,8 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                             if (!task) return
                             try {
                               await removeAssignee(task.id, assignee.id)
+                              // Refresh task data after removing assignee
+                              await fetchTask(task.id)
                               toast.success(`Đã xóa ${assignee.name}`)
                             } catch (error: any) {
                               toast.error(error?.message || `Không thể xóa ${assignee.name}`)
@@ -1063,14 +1103,13 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                 if (!task || !deleteCommentId) return
                 try {
                   await CommentsService.deleteComment(task.id, deleteCommentId)
-                  toast.success("Đã xóa bình luận")
+                  // Update comments in real-time
+                  setComments(comments.filter(c => c.id !== deleteCommentId))
+                  toast.success("Đã xóa bình luận! 🗑️")
                   setIsDeleteCommentDialogOpen(false)
                   setDeleteCommentId(null)
-                  // Refresh both comments and activity logs
-                  await Promise.all([
-                    fetchComments(),
-                    fetchActivityLogs()
-                  ])
+                  // Refresh activity logs in background
+                  fetchActivityLogs()
                 } catch (error: any) {
                   toast.error(error?.message || "Không thể xóa bình luận")
                 }

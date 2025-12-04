@@ -58,19 +58,23 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
 
   // Get stores
   const { createTask, updateTask } = useTasksStore()
-  const { projects } = useProjectsStore()
+  const { projects, fetchProjects } = useProjectsStore()
   const { user: currentUser } = useAuthStore()
   const allTags = useTagsStore(state => state.tags)
   const fetchTags = useTagsStore(state => state.fetchTags)
   const loadingTags = useTagsStore(state => state.loading)
 
-  // Fetch users and tags when dialog opens
+  // Fetch users, tags, and projects when dialog opens
   useEffect(() => {
     if (open) {
       fetchUsers()
       fetchTags().catch(err => console.error('Failed to fetch tags:', err))
+      // Ensure projects are loaded
+      if (projects.length === 0) {
+        fetchProjects().catch(err => console.error('Failed to fetch projects:', err))
+      }
     }
-  }, [open, fetchTags])
+  }, [open, fetchTags, fetchProjects, projects.length])
 
   const fetchUsers = async () => {
     setLoadingUsers(true)
@@ -88,6 +92,13 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
   // Sync form with editTask when it changes
   useEffect(() => {
     if (editTask && mode === "edit" && open) {
+      console.log("[TaskCreateModal] Loading editTask data:", {
+        title: editTask.title,
+        description: editTask.description,
+        projectId: editTask.projectId,
+        assignees: editTask.assignees?.map(a => ({ id: a.id, name: a.name })),
+        tags: editTask.tags?.map(t => ({ id: t.id, name: t.name }))
+      })
       setTitle(editTask.title || "")
       setDescription(editTask.description || "")
       setStatus(editTask.status || defaultStatus)
@@ -171,7 +182,6 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
           priority,
           dueDate: dueDate?.toISOString() || undefined,
           estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
-          projectId,
         }
 
         await updateTask(editTask.id, updateData)

@@ -159,7 +159,13 @@ export const useTasksStore = create<TasksStore>()(
               ...params,
             }
 
+            console.log("[TasksStore] Fetching tasks with params:", queryParams)
             const response = await tasksService.getTasks(queryParams)
+            console.log("[TasksStore] Received tasks:", {
+              count: response.data.length,
+              firstTask: response.data[0],
+              total: response.total
+            })
 
             set({
               tasks: response.data,

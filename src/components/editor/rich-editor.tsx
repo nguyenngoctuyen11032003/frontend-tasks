@@ -3,7 +3,6 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
-import Link from "@tiptap/extension-link"
 import Image from "@tiptap/extension-image"
 import Mention from "@tiptap/extension-mention"
 import { ReactRenderer } from "@tiptap/react"
@@ -216,15 +215,16 @@ export function RichEditor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: {
+          openOnClick: false,
+          HTMLAttributes: {
+            class: "text-primary underline hover:text-primary/80",
+          },
+        },
+      }),
       Placeholder.configure({
         placeholder,
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: "text-primary underline hover:text-primary/80",
-        },
       }),
       Image.configure({
         HTMLAttributes: {

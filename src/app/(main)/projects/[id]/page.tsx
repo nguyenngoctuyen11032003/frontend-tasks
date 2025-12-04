@@ -93,6 +93,11 @@ export default function ProjectDetailPage() {
           fetchTasks({ projectId: id, limit: 1000 }),
           UsersService.getUsers({ limit: 100 }).then(result => setAllUsers(result.data))
         ])
+        console.log("[ProjectDetail] Data loaded:", {
+          projectId: id,
+          tasksCount: tasks.length,
+          tasksData: tasks.slice(0, 2)
+        })
       } catch (error) {
         console.error("Failed to load project:", error)
         toast.error("Không thể tải thông tin dự án")
@@ -138,6 +143,12 @@ export default function ProjectDetailPage() {
   }
 
   const projectTasks = tasks.filter((t) => t.projectId === project.id)
+  console.log("[ProjectDetail] Task filtering:", {
+    allTasksCount: tasks.length,
+    projectId: project.id,
+    projectTasksCount: projectTasks.length,
+    allTasksProjectIds: tasks.slice(0, 5).map(t => ({ id: t.id, title: t.title, projectId: t.projectId }))
+  })
   
   // Apply filters
   const filteredTasks = projectTasks.filter((task) => {
@@ -611,7 +622,20 @@ export default function ProjectDetailPage() {
               </div>
             </CardContent>
           </Card>
-          <KanbanBoard tasks={filteredTasks} onTaskClick={handleTaskClick} />
+          <KanbanBoard 
+            tasks={filteredTasks} 
+            onTaskClick={handleTaskClick}
+            onTaskMove={async (taskId, newStatus) => {
+              try {
+                const { updateTask } = useTasksStore.getState()
+                await updateTask(taskId, { status: newStatus })
+                toast.success("Đã cập nhật trạng thái công việc")
+              } catch (error) {
+                toast.error("Không thể cập nhật trạng thái")
+                console.error("Update task status error:", error)
+              }
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="list" className="mt-6">
@@ -812,6 +836,8 @@ export default function ProjectDetailPage() {
         task={selectedTask}
         open={isTaskDetailOpen}
         onOpenChange={setIsTaskDetailOpen}
+        onEdit={handleEditTask}
+        onDelete={handleDeleteTask}
       />
 
       {/* Create Task Modal */}
@@ -819,8 +845,9 @@ export default function ProjectDetailPage() {
         open={isCreateTaskOpen}
         onOpenChange={setIsCreateTaskOpen}
         defaultProjectId={project.id}
-        onSuccess={() => {
-          fetchTasks({ projectId: project.id })
+        onSuccess={async () => {
+          await fetchTasks({ projectId: id, limit: 1000 })
+          setIsCreateTaskOpen(false)
         }}
       />
 
@@ -830,22 +857,12 @@ export default function ProjectDetailPage() {
         onOpenChange={setIsEditTaskOpen}
         mode="edit"
         editTask={editingTask}
-        onSuccess={() => {
-          fetchTasks({ projectId: project.id })
+        onSuccess={async () => {
+          await fetchTasks({ projectId: id, limit: 1000 })
+          setIsEditTaskOpen(false)
           setEditingTask(null)
         }}
-      />
-
-      {/* Task Detail Dialog */}
-      <TaskDetailDialog 
-        task={selectedTask} 
-        open={isTaskDetailOpen} 
-        onOpenChange={setIsTaskDetailOpen}
-        onEdit={handleEditTask}
-        onDelete={handleDeleteTask}
-      />
-
-      {/* Edit Project Dialog */}
+      />      {/* Edit Project Dialog */}
       <Dialog open={isEditProjectOpen} onOpenChange={setIsEditProjectOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>

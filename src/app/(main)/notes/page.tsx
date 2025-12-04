@@ -131,19 +131,69 @@ export default function NotesPage() {
   const handleSave = async (noteData: Partial<Note>) => {
     try {
       if (editorMode === "create") {
-        await notesStore.createNote({
+        // Create note without tags
+        const createdNote = await notesStore.createNote({
           title: noteData.title!,
           content: noteData.content || "",
           projectId: noteData.projectId,
-          tagIds: (noteData.tags || []) as string[],
         })
+        
+        // Add tags after note is created
+        const tagIds = (noteData.tags || [])
+          .map(tag => typeof tag === 'string' ? tag : tag.id)
+          .filter(Boolean) as string[]
+        
+        if (tagIds.length > 0) {
+          try {
+            for (const tagId of tagIds) {
+              await notesStore.addTag(createdNote.id, tagId)
+            }
+          } catch (error) {
+            console.error("Failed to add tags to note:", error)
+            toast.warning("Ghi chú đã tạo nhưng không thể thêm tất cả tags")
+          }
+        }
+        
         toast.success("Đã tạo ghi chú mới")
       } else if (selectedNote) {
+        // Update note without tags
         await notesStore.updateNote(selectedNote.id, {
           title: noteData.title,
           content: noteData.content,
           projectId: noteData.projectId,
         })
+        
+        // Handle tag changes
+        const newTagIds = (noteData.tags || [])
+          .map(tag => typeof tag === 'string' ? tag : tag.id)
+          .filter(Boolean) as string[]
+        
+        const oldTagIds = (selectedNote.tags || [])
+          .map(tag => typeof tag === 'string' ? tag : tag.id)
+          .filter(Boolean) as string[]
+        
+        // Remove tags that are no longer selected
+        for (const tagId of oldTagIds) {
+          if (!newTagIds.includes(tagId)) {
+            try {
+              await notesStore.removeTag(selectedNote.id, tagId)
+            } catch (error) {
+              console.error("Failed to remove tag:", error)
+            }
+          }
+        }
+        
+        // Add new tags
+        for (const tagId of newTagIds) {
+          if (!oldTagIds.includes(tagId)) {
+            try {
+              await notesStore.addTag(selectedNote.id, tagId)
+            } catch (error) {
+              console.error("Failed to add tag:", error)
+            }
+          }
+        }
+        
         toast.success("Đã lưu thay đổi")
       }
       setEditorMode("view")
@@ -518,11 +568,15 @@ export default function NotesPage() {
                     </div>
                     {selectedNote.tags && selectedNote.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-6 pt-4 border-t">
-                        {selectedNote.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary">
-                            #{tag}
-                          </Badge>
-                        ))}
+                        {selectedNote.tags.map((tag) => {
+                          const tagName = typeof tag === 'string' ? tag : tag.name
+                          const tagId = typeof tag === 'string' ? tag : tag.id
+                          return (
+                            <Badge key={tagId} variant="secondary">
+                              #{tagName}
+                            </Badge>
+                          )
+                        })}
                       </div>
                     )}
                   </TabsContent>

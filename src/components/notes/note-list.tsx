@@ -187,11 +187,15 @@ export function NoteList({
             {/* Tags */}
             {note.tags && note.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-3">
-                {note.tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    #{tag}
-                  </Badge>
-                ))}
+                {note.tags.slice(0, 3).map((tag) => {
+                  const tagName = typeof tag === 'string' ? tag : tag.name
+                  const tagId = typeof tag === 'string' ? tag : tag.id
+                  return (
+                    <Badge key={tagId} variant="secondary" className="text-xs">
+                      #{tagName}
+                    </Badge>
+                  )
+                })}
                 {note.tags.length > 3 && (
                   <Badge variant="outline" className="text-xs">
                     +{note.tags.length - 3}

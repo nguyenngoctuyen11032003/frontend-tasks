@@ -19,14 +19,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { TagsInput } from "@/components/notes/tags-input"
 import { cn, formatDate } from "@/lib/utils"
 import type { TaskStatus, TaskPriority, Task, User, Tag } from "@/types"
 import { toast } from "sonner"
 import { useTasksStore } from "@/stores/tasks-store"
 import { useProjectsStore } from "@/stores/projects-store"
 import { useAuthStore } from "@/stores/auth-store"
+import { useTagsStore } from "@/stores/tags-store"
+import { tasksService } from "@/services/tasks.service"
 import { UsersService } from "@/services/users.service"
-import { TagsService } from "@/services/tags.service"
 
 interface TaskCreateModalProps {
   open: boolean
@@ -48,26 +50,27 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined)
   const [estimatedHours, setEstimatedHours] = useState("")
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([])
 
   // Data from services
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [allTags, setAllTags] = useState<Tag[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
-  const [loadingTags, setLoadingTags] = useState(false)
 
   // Get stores
   const { createTask, updateTask } = useTasksStore()
   const { projects } = useProjectsStore()
   const { user: currentUser } = useAuthStore()
+  const allTags = useTagsStore(state => state.tags)
+  const fetchTags = useTagsStore(state => state.fetchTags)
+  const loadingTags = useTagsStore(state => state.loading)
 
   // Fetch users and tags when dialog opens
   useEffect(() => {
     if (open) {
       fetchUsers()
-      fetchTags()
+      fetchTags().catch(err => console.error('Failed to fetch tags:', err))
     }
-  }, [open])
+  }, [open, fetchTags])
 
   const fetchUsers = async () => {
     setLoadingUsers(true)
@@ -82,19 +85,6 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
     }
   }
 
-  const fetchTags = async () => {
-    setLoadingTags(true)
-    try {
-      const tags = await TagsService.getTags()
-      setAllTags(tags)
-    } catch (error) {
-      console.error("Failed to fetch tags:", error)
-      toast.error("Không thể tải danh sách tag")
-    } finally {
-      setLoadingTags(false)
-    }
-  }
-
   // Sync form with editTask when it changes
   useEffect(() => {
     if (editTask && mode === "edit" && open) {
@@ -106,7 +96,7 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
       setDueDate(editTask.dueDate ? new Date(editTask.dueDate) : undefined)
       setEstimatedHours(editTask.estimatedHours?.toString() || "")
       setSelectedAssignees(editTask.assignees?.map((a) => a.id) || [])
-      setSelectedTags(editTask.tags?.map((t) => t.id) || [])
+      setSelectedTags(editTask.tags || [])
     } else if (mode === "create" && open) {
       resetForm()
       // Set default project if provided
@@ -115,6 +105,18 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
       }
     }
   }, [editTask, mode, defaultStatus, open, defaultProjectId])
+
+  const resetForm = () => {
+    setTitle("")
+    setDescription("")
+    setStatus(defaultStatus)
+    setPriority("medium")
+    setProjectId("")
+    setDueDate(undefined)
+    setEstimatedHours("")
+    setSelectedAssignees([])
+    setSelectedTags([])
+  }
 
   const getInitials = (name?: string | null) => {
     if (!name) return "??"
@@ -130,14 +132,27 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
     setSelectedAssignees((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]))
   }
 
-  const toggleTag = (tagId: string) => {
-    setSelectedTags((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]))
+  // Helper functions for task operations
+  const assignUsers = async (taskId: string, userIds: string[]) => {
+    return tasksService.assignUsers(taskId, userIds)
+  }
+
+  const removeAssignee = async (taskId: string, assigneeId: string) => {
+    return tasksService.removeAssignee(taskId, assigneeId)
+  }
+
+  const addTagsToTask = async (taskId: string, tagIds: string[]) => {
+    return tasksService.addTags(taskId, tagIds)
+  }
+
+  const removeTagFromTask = async (taskId: string, tagId: string) => {
+    return tasksService.removeTag(taskId, tagId)
   }
 
   const handleSubmit = async () => {
     // Validation
-    if (!title.trim()) {
-      toast.error("Vui lòng nhập tiêu đề công việc")
+    if (!title.trim() || title.trim().length < 2) {
+      toast.error("Vui lòng nhập tiêu đề công việc (tối thiểu 2 ký tự)")
       return
     }
     if (!projectId) {
@@ -159,17 +174,58 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
           projectId,
         }
 
-        // Add assignees if changed
-        if (selectedAssignees.length > 0) {
-          updateData.assigneeIds = selectedAssignees
-        }
-
-        // Add tags if changed
-        if (selectedTags.length > 0) {
-          updateData.tagIds = selectedTags
-        }
-
         await updateTask(editTask.id, updateData)
+        
+        // Handle assignees separately
+        if (selectedAssignees && selectedAssignees.length > 0) {
+          try {
+            const currentAssigneeIds = (editTask.assignees || []).map(a => a.id)
+            // Remove assignees that are no longer selected
+            for (const id of currentAssigneeIds) {
+              if (!selectedAssignees.includes(id)) {
+                await removeAssignee(editTask.id, id)
+              }
+            }
+            // Add new assignees
+            const newAssignees = selectedAssignees.filter(id => !currentAssigneeIds.includes(id))
+            if (newAssignees.length > 0) {
+              await assignUsers(editTask.id, newAssignees)
+            }
+          } catch (error) {
+            console.error("Failed to update assignees:", error)
+            toast.warning("Không thể cập nhật tất cả người được giao việc")
+          }
+        }
+        
+        // Handle tags separately
+        const newTagIds = selectedTags
+          .map(tag => tag.id)
+          .filter(id => id && id.trim().length > 0)
+        
+        if (newTagIds.length > 0 || (editTask.tags && editTask.tags.length > 0)) {
+          try {
+            const currentTagIds = (editTask.tags || [])
+              .map(tag => typeof tag === 'string' ? tag : tag.id)
+              .filter(Boolean) as string[]
+            
+            // Remove tags that are no longer selected
+            for (const id of currentTagIds) {
+              if (!newTagIds.includes(id)) {
+                await removeTagFromTask(editTask.id, id)
+              }
+            }
+            
+            // Add new tags
+            const tagsToAdd = newTagIds.filter(id => !currentTagIds.includes(id))
+            if (tagsToAdd.length > 0) {
+              await addTagsToTask(editTask.id, tagsToAdd)
+            }
+          } catch (error) {
+            console.error("Failed to update tags:", error)
+            toast.warning("Không thể cập nhật tất cả tags")
+          }
+        }
+        
         toast.success("Đã cập nhật công việc")
       } else {
         // Create new task
@@ -189,17 +245,32 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
           assignedById: currentUser.id,
         }
 
-        // Add assignees if selected
-        if (selectedAssignees.length > 0) {
-          taskData.assigneeIds = selectedAssignees
+        const createdTask = await createTask(taskData)
+        
+        // Add assignees after task is created
+        if (selectedAssignees && selectedAssignees.length > 0) {
+          try {
+            await assignUsers(createdTask.id, selectedAssignees)
+          } catch (error) {
+            console.error("Failed to assign users:", error)
+            toast.warning("Công việc đã tạo nhưng không thể giao cho tất cả người dùng")
+          }
         }
-
-        // Add tags if selected
-        if (selectedTags.length > 0) {
-          taskData.tagIds = selectedTags
+        
+        // Add tags after task is created
+        const tagIds = selectedTags
+          .map(tag => tag.id)
+          .filter(id => id && id.trim().length > 0)
+        
+        if (tagIds.length > 0) {
+          try {
+            await addTagsToTask(createdTask.id, tagIds)
+          } catch (error) {
+            console.error("Failed to add tags:", error)
+            toast.warning("Công việc đã tạo nhưng không thể thêm tất cả tags")
+          }
         }
-
-        await createTask(taskData)
+        
         toast.success("Đã tạo công việc mới")
       }
       
@@ -213,18 +284,6 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const resetForm = () => {
-    setTitle("")
-    setDescription("")
-    setStatus(defaultStatus)
-    setPriority("medium")
-    setProjectId("")
-    setDueDate(undefined)
-    setEstimatedHours("")
-    setSelectedAssignees([])
-    setSelectedTags([])
   }
 
   return (
@@ -422,26 +481,13 @@ export function TaskCreateModal({ open, onOpenChange, defaultStatus = "todo", on
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span className="ml-2 text-sm text-muted-foreground">Đang tải...</span>
               </div>
-            ) : allTags.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {allTags.map((tag) => (
-                  <Badge
-                    key={tag.id}
-                    variant={selectedTags.includes(tag.id) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    style={{
-                      borderColor: tag.color,
-                      backgroundColor: selectedTags.includes(tag.id) ? tag.color : "transparent",
-                      color: selectedTags.includes(tag.id) ? "white" : tag.color,
-                    }}
-                    onClick={() => toggleTag(tag.id)}
-                  >
-                    {tag.name}
-                  </Badge>
-                ))}
-              </div>
             ) : (
-              <p className="text-sm text-muted-foreground p-3 border rounded-lg">Chưa có tag nào</p>
+              <TagsInput
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
+                placeholder="Chọn hoặc thêm nhãn..."
+                maxTags={10}
+              />
             )}
           </div>
         </div>

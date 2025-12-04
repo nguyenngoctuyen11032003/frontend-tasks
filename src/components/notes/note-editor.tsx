@@ -1,17 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Save, X, Paperclip, Tag, FolderOpen, Share2, Pin, Clock, Type } from "lucide-react"
+import { Save, X, Paperclip, Tag as TagIcon, FolderOpen, Share2, Pin, Clock, Type } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { RichEditor } from "@/components/editor/rich-editor"
+import { TagsInput } from "@/components/notes/tags-input"
 import { cn } from "@/lib/utils"
 import { NoteManager } from "@/lib/notes"
-import type { Note, User, Project } from "@/types"
+import { useTagsStore } from "@/stores/tags-store"
+import type { Note, User, Project, Tag } from "@/types"
 
 interface NoteEditorProps {
   note?: Note
@@ -26,22 +28,21 @@ export function NoteEditor({ note, projects, users, onSave, onCancel, className 
   const [title, setTitle] = useState(note?.title || "")
   const [content, setContent] = useState(note?.content || "")
   const [projectId, setProjectId] = useState<string | undefined>(note?.projectId)
-  const [tags, setTags] = useState<string[]>(note?.tags || [])
-  const [tagInput, setTagInput] = useState("")
+  const [tags, setTags] = useState<Tag[]>(
+    note?.tags && Array.isArray(note.tags)
+      ? note.tags.map(t => typeof t === 'string' ? { id: t, name: t, color: '#6366f1' } : t)
+      : []
+  )
   const [isPinned, setIsPinned] = useState(note?.isPinned || false)
   const [isShared, setIsShared] = useState(note?.isShared || false)
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleAddTag = () => {
-    if (!tagInput.trim()) return
-    const newTags = NoteManager.parseTags(tagInput)
-    setTags([...new Set([...tags, ...newTags])])
-    setTagInput("")
-  }
+  // Fetch tags on mount
+  const fetchTags = useTagsStore(state => state.fetchTags)
 
-  const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag))
-  }
+  useEffect(() => {
+    fetchTags().catch(err => console.error('Failed to fetch tags:', err))
+  }, [fetchTags])
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -156,47 +157,18 @@ export function NoteEditor({ note, projects, users, onSave, onCancel, className 
 
         {/* Tags */}
         <div className="space-y-2">
-          <Label htmlFor="tags" className="flex items-center gap-2">
-            <Tag className="h-4 w-4" />
+          <Label className="flex items-center gap-2">
+            <TagIcon className="h-4 w-4" />
             Tags
           </Label>
-          <div className="flex gap-2">
-            <Input
-              id="tags"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  handleAddTag()
-                }
-              }}
-              placeholder="Thêm tag..."
-            />
-            <Button type="button" variant="outline" size="sm" onClick={handleAddTag}>
-              Thêm
-            </Button>
-          </div>
+          <TagsInput
+            selectedTags={tags}
+            onTagsChange={setTags}
+            placeholder="Thêm tag..."
+            maxTags={10}
+          />
         </div>
       </div>
-
-      {/* Tags Display */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => (
-            <Badge key={tag} variant="secondary" className="gap-1">
-              #{tag}
-              <button
-                type="button"
-                onClick={() => handleRemoveTag(tag)}
-                className="ml-1 hover:text-destructive"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
 
       {/* Content Editor */}
       <div className="space-y-2">

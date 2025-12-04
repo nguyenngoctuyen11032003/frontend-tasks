@@ -422,7 +422,10 @@ export const useNotesStore = create<NotesStore>()(
           // Apply filters
           if (state.filters.tagId) {
             filtered = filtered.filter((n) =>
-              (n.tags || []).includes(state.filters.tagId!)
+              (n.tags || []).some(tag => {
+                // Support both Tag objects and string IDs
+                return typeof tag === 'string' ? tag === state.filters.tagId : tag.id === state.filters.tagId
+              })
             )
           }
 

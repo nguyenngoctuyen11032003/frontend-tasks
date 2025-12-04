@@ -50,7 +50,9 @@ export class NoteManager {
         const search = filter.search.toLowerCase()
         const matchesTitle = note.title.toLowerCase().includes(search)
         const matchesContent = note.content.toLowerCase().includes(search)
-        const matchesTags = note.tags?.some((tag) => tag.toLowerCase().includes(search))
+        const matchesTags = note.tags?.some((tag) => 
+          (typeof tag === 'string' ? tag : tag.name).toLowerCase().includes(search)
+        )
         if (!matchesTitle && !matchesContent && !matchesTags) return false
       }
 
@@ -65,7 +67,12 @@ export class NoteManager {
 
       // Tags filter
       if (filter.tags && filter.tags.length > 0) {
-        if (!note.tags || !filter.tags.some((tag) => note.tags?.includes(tag))) {
+        if (!note.tags || !filter.tags.some((filterTag) => 
+          note.tags?.some((noteTag) => {
+            const noteTagId = typeof noteTag === 'string' ? noteTag : noteTag.id
+            return noteTagId === filterTag
+          })
+        )) {
           return false
         }
       }
@@ -184,7 +191,10 @@ export class NoteManager {
   static extractTags(notes: Note[]): string[] {
     const tagsSet = new Set<string>()
     notes.forEach((note) => {
-      note.tags?.forEach((tag) => tagsSet.add(tag))
+      note.tags?.forEach((tag) => {
+        const tagName = typeof tag === 'string' ? tag : tag.name
+        tagsSet.add(tagName)
+      })
     })
     return Array.from(tagsSet).sort()
   }
@@ -210,7 +220,8 @@ export class NoteManager {
     const byTag: Record<string, number> = {}
     notes.forEach((note) => {
       note.tags?.forEach((tag) => {
-        byTag[tag] = (byTag[tag] || 0) + 1
+        const tagName = typeof tag === 'string' ? tag : tag.name
+        byTag[tagName] = (byTag[tagName] || 0) + 1
       })
     })
 
@@ -256,7 +267,9 @@ export class NoteManager {
       }
 
       // Tags match
-      if (note.tags?.some((tag) => tag.toLowerCase().includes(searchTerm))) {
+      if (note.tags?.some((tag) => 
+        (typeof tag === 'string' ? tag : tag.name).toLowerCase().includes(searchTerm)
+      )) {
         score += 7
       }
 

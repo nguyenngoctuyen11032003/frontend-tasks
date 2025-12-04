@@ -7,7 +7,6 @@ export interface CreateNotePayload {
   title: string
   content: string
   projectId?: string
-  tagIds?: string[]
   sharedWithUserIds?: string[]
 }
 

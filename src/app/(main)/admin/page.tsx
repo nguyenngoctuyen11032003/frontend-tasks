@@ -1228,7 +1228,11 @@ export default function AdminPage() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Bộ nhớ sử dụng</p>
-                    <p className="font-medium">{systemHealth.server.memoryUsage} MB</p>
+                    <p className="font-medium">
+                      {typeof systemHealth.server.memoryUsage === 'object'
+                        ? `${systemHealth.server.memoryUsage.heapUsed} MB`
+                        : `${systemHealth.server.memoryUsage} MB`}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Thời gian hoạt động</p>

@@ -729,6 +729,65 @@ class ApiClient {
       body: JSON.stringify({ to, subject, content, cc, bcc }),
     })
   }
+
+  async getEmailStats() {
+    return this.request<{ totalSent: number; totalFailed: number; lastSentAt?: string; successRate: number }>("/email/stats")
+  }
+
+  // Settings - Themes
+  async createTheme(data: { name: string; colors: any }) {
+    return this.request<any>("/settings/themes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getAllThemes() {
+    return this.request<any[]>("/settings/themes")
+  }
+
+  async getDefaultThemes() {
+    return this.request<any[]>("/settings/themes/defaults")
+  }
+
+  async getTheme(id: string) {
+    return this.request<any>(`/settings/themes/${id}`)
+  }
+
+  async updateTheme(id: string, data: { name?: string; colors?: any }) {
+    return this.request<any>(`/settings/themes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTheme(id: string) {
+    return this.request<void>(`/settings/themes/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // Settings - User Settings
+  async getUserSettings() {
+    return this.request<any>("/settings/user")
+  }
+
+  async updateUserSettings(data: any) {
+    return this.request<any>("/settings/user", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async resetUserSettings() {
+    return this.request<any>("/settings/user/reset", {
+      method: "POST",
+    })
+  }
+
+  async getSystemDefaults() {
+    return this.request<any>("/settings/defaults")
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL)

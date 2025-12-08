@@ -69,8 +69,11 @@ export function MessageList({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {messages.map((message, index) => {
-        const isOwn = message.sender.id === currentUserId
+      {messages?.map((message, index) => {
+        // Skip undefined messages
+        if (!message || !message.id) return null
+
+        const isOwn = message.sender?.id === currentUserId
         const sender = message.sender
         const showDate =
           index === 0 || formatDate(message.createdAt) !== formatDate(messages[index - 1].createdAt)
@@ -78,10 +81,8 @@ export function MessageList({
         const isLongMessage = message.content.length > 200
         
         // Get file info from attachments
-        const attachment = message.attachments?.[0]
-        const fileUrl = attachment?.url
-        const fileName = attachment?.name
-        const fileSize = attachment?.size
+        const fileUrl = message.attachmentUrls?.[0]
+        const fileName = fileUrl ? fileUrl.split('/').pop() : null
 
         return (
           <div key={message.id}>
@@ -213,11 +214,6 @@ export function MessageList({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{fileName || "File"}</p>
-                      {fileSize && (
-                        <p className={cn("text-xs", isOwn ? "text-primary-foreground/70" : "text-muted-foreground")}>
-                          {(fileSize / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      )}
                       <div className={cn("flex items-center gap-1 mt-1")}>
                         <span className={cn("text-xs", isOwn ? "text-primary-foreground/70" : "text-muted-foreground")}>
                           {formatTime(message.createdAt)}

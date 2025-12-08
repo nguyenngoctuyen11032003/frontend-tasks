@@ -13,10 +13,14 @@ export const chatKeys = {
 }
 
 // Hooks
-export function useChats() {
+export function useChats(query?: { page?: number; limit?: number; search?: string }) {
   return useQuery({
     queryKey: chatKeys.lists(),
-    queryFn: () => api.getChats(),
+    queryFn: async () => {
+      const response = await api.getChats(query)
+      console.log('[useChats] API response:', response)
+      return response
+    },
   })
 }
 
@@ -62,7 +66,7 @@ export function useSendMessage() {
         content,
         type: type || "text",
         createdAt: new Date().toISOString(),
-        readBy: ["user-1"],
+        readBy: [],
       }
 
       queryClient.setQueryData(chatKeys.messages(chatId), (old: any) => {
@@ -93,7 +97,7 @@ export function useCreateChat() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (data: { name?: string; type: "group" | "direct"; memberIds: string[] }) => api.createChat(data),
+    mutationFn: (data: { name?: string; type: "group" | "direct"; participantIds: string[] }) => api.createChat(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.lists() })
       toast.success("Tạo cuộc trò chuyện thành công")

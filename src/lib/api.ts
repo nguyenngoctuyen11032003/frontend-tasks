@@ -341,31 +341,82 @@ class ApiClient {
   }
 
   // Chat
-  async getChats() {
-    return this.request<Chat[]>("/chats")
+  async getChats(query?: { page?: number; limit?: number; search?: string }) {
+    const params = new URLSearchParams()
+    if (query?.page) params.set("page", query.page.toString())
+    if (query?.limit) params.set("limit", query.limit.toString())
+    if (query?.search) params.set("search", query.search)
+    
+    const queryString = params.toString()
+    // BE returns PaginatedResponse<Chat>
+    const response = await this.request<PaginatedResponse<Chat>>(
+      `/chats${queryString ? `?${queryString}` : ""}`
+    )
+    return response || { items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }
   }
 
   async getChat(id: string) {
     return this.request<Chat>(`/chats/${id}`)
   }
 
-  async getMessages(chatId: string, page?: number) {
-    const params = page ? `?page=${page}` : ""
-    return this.request<PaginatedResponse<Message>>(`/chats/${chatId}/messages${params}`)
+  async getMessages(chatId: string, page?: number, limit: number = 20) {
+    const params = new URLSearchParams()
+    if (page) params.set("page", page.toString())
+    params.set("limit", limit.toString())
+    
+    const queryString = params.toString()
+    // BE endpoint: GET /chats/messages/list with chatId in query
+    return this.request<PaginatedResponse<Message>>(
+      `/chats/messages/list?chatId=${chatId}&${queryString}`
+    )
   }
 
   async sendMessage(chatId: string, content: string, type: "text" | "image" | "file" = "text") {
-    return this.request<Message>(`/chats/${chatId}/messages`, {
+    return this.request<Message>(`/chats/messages`, {
       method: "POST",
-      body: JSON.stringify({ content, type }),
+      body: JSON.stringify({ chatId, content, type }),
     })
   }
 
-  async createChat(data: { name?: string; type: "group" | "direct"; memberIds: string[] }) {
+  async createChat(data: { name?: string; type: "group" | "direct"; participantIds: string[] }) {
     return this.request<Chat>("/chats", {
       method: "POST",
       body: JSON.stringify(data),
     })
+  }
+
+  async updateChat(id: string, data: { name?: string }) {
+    return this.request<Chat>(`/chats/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteChat(id: string) {
+    return this.request<void>(`/chats/${id}`, { method: "DELETE" })
+  }
+
+  async addChatParticipants(chatId: string, participantIds: string[]) {
+    return this.request<Chat>(`/chats/${chatId}/participants`, {
+      method: "POST",
+      body: JSON.stringify({ participantIds }),
+    })
+  }
+
+  async removeChatParticipant(chatId: string, participantId: string) {
+    return this.request<void>(`/chats/${chatId}/participants/${participantId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async markMessageAsRead(messageId: string) {
+    return this.request<Message>(`/chats/messages/${messageId}/read`, {
+      method: "POST",
+    })
+  }
+
+  async getUnreadChatCount() {
+    return this.request<{ unreadCount: number }>(`/chats/unread-count`)
   }
 
   // Users
@@ -669,7 +720,17 @@ class ApiClient {
       body: JSON.stringify({ roleIds }),
     })
   }
+
+  // Email
+  async sendEmail(data: { to: string; subject: string; content: string; cc?: string; bcc?: string; attachments?: File[] }) {
+    const { to, subject, content, cc, bcc } = data
+    return this.request<{ message: string; id: string }>("/email/send", {
+      method: "POST",
+      body: JSON.stringify({ to, subject, content, cc, bcc }),
+    })
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL)
 export default api
+

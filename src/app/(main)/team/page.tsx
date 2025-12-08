@@ -39,6 +39,7 @@ import { EmailComposeModal } from "@/components/team/email-compose-modal"
 import { RoleManagementDialog } from "@/components/team/role-management-dialog"
 import { mockUsers, mockTasks } from "@/mocks/data"
 import { useRolesStore } from "@/stores/roles-store"
+import { useAuthStore } from "@/stores/auth-store"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { User } from "@/types"
@@ -47,7 +48,9 @@ type ViewMode = "grid" | "list"
 type StatusFilter = "all" | "online" | "away" | "offline"
 
 export default function TeamPage() {
+  const router = useRouter()
   const { roles, fetchRoles } = useRolesStore()
+  const { isAuthenticated, user } = useAuthStore()
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [departmentFilter, setDepartmentFilter] = useState<string>("all")
@@ -58,22 +61,66 @@ export default function TeamPage() {
   const [isRoleManagementOpen, setIsRoleManagementOpen] = useState(false)
   const [emailRecipient, setEmailRecipient] = useState<User | null>(null)
   const [roleFilter, setRoleFilter] = useState<string>("all")
-  const router = useRouter()
+  const [users, setUsers] = useState<User[]>([])
+  const [tasks, setTasks] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Fetch roles on mount
+  // Fetch users and tasks on mount
   useEffect(() => {
-    fetchRoles()
-  }, [fetchRoles])
+    // Check authentication first
+    if (!isAuthenticated) {
+      router.push('/login')
+      return
+    }
 
-  const departments = [...new Set(mockUsers.map((u) => u.department).filter(Boolean))]
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        // Fetch users from API
+        const usersData = await api.getUsers()
+        setUsers(usersData || [])
+        
+        // Fetch tasks from API - getTasks returns PaginatedResponse<Task>
+        const tasksResponse = await api.getTasks()
+        // Extract items array from paginated response
+        const tasksData = tasksResponse?.items || tasksResponse || []
+        setTasks(Array.isArray(tasksData) ? tasksData : [])
+        
+        // Fetch roles
+        fetchRoles()
+      } catch (err) {
+        console.error("Error fetching data:", err)
+        setError(err instanceof Error ? err.message : "Failed to fetch data")
+        // Fall back to mock data if API fails
+        setUsers(mockUsers)
+        setTasks(mockTasks)
+        fetchRoles()
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-  const filteredUsers = mockUsers.filter((user) => {
+    fetchData()
+  }, [fetchRoles, isAuthenticated, router])
+
+  const departments = [...new Set(users.map((u) => u.department).filter(Boolean))]
+
+  // Helper to normalize role to string (handle both role objects and strings)
+  const getRoleName = (role: any): string => {
+    if (typeof role === 'string') return role
+    if (typeof role === 'object' && role?.name) return role.name
+    return String(role)
+  }
+
+  const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || user.status === statusFilter
     const matchesDepartment = departmentFilter === "all" || user.department === departmentFilter
-    const matchesRole = roleFilter === "all" || user.roles.includes(roleFilter)
+    const matchesRole = roleFilter === "all" || user.roles.some((role) => getRoleName(role) === roleFilter)
     return matchesSearch && matchesStatus && matchesDepartment && matchesRole
   })
 
@@ -89,7 +136,12 @@ export default function TeamPage() {
   }
 
   const getUserStats = (userId: string) => {
-    const userTasks = mockTasks.filter((t) => t.assignees.some((a) => a.id === userId))
+    // Ensure tasks is an array before filtering
+    const taskArray = Array.isArray(tasks) ? tasks : []
+    const userTasks = taskArray.filter((t) => 
+      t?.assignees?.some((a: any) => a.id === userId) || 
+      t?.assigneeIds?.includes(userId)
+    )
     const completed = userTasks.filter((t) => t.status === "done").length
     const inProgress = userTasks.filter((t) => t.status === "in_progress").length
     return { total: userTasks.length, completed, inProgress }
@@ -102,11 +154,18 @@ export default function TeamPage() {
 
   const getRoleDisplayName = (roleName: string) => {
     const role = roles.find((r) => r.name === roleName)
-    return role?.displayName || roleName
+    // Handle both role object and string cases
+    if (typeof role === 'object' && role?.displayName) {
+      return role.displayName
+    }
+    if (typeof role === 'string') {
+      return role
+    }
+    return roleName
   }
 
-  const onlineCount = mockUsers.filter((u) => u.status === "online").length
-  const totalCount = mockUsers.length
+  const onlineCount = users.filter((u) => u.status === "online").length
+  const totalCount = users.length
 
   const handleMessageUser = (user: User) => {
     // Navigate to chat page with user parameter
@@ -157,13 +216,13 @@ export default function TeamPage() {
           },
           {
             label: "Vắng mặt",
-            value: mockUsers.filter((u) => u.status === "away").length,
+            value: users.filter((u) => u.status === "away").length,
             icon: Clock,
             color: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30",
           },
           {
             label: "Ngoại tuyến",
-            value: mockUsers.filter((u) => u.status === "offline").length,
+            value: users.filter((u) => u.status === "offline").length,
             icon: Users,
             color: "text-gray-600 bg-gray-100 dark:bg-gray-900/30",
           },
@@ -326,7 +385,18 @@ export default function TeamPage() {
       </Card>
 
       {/* Team Members */}
-      {filteredUsers.length === 0 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-r-transparent rounded-full" />
+          <p className="mt-2 text-muted-foreground">Đang tải dữ liệu...</p>
+        </div>
+      ) : error && users.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <Users className="h-16 w-16 text-destructive/50" />
+          <h3 className="mt-4 text-lg font-semibold">Lỗi tải dữ liệu</h3>
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      ) : filteredUsers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <Users className="h-16 w-16 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-semibold">Không tìm thấy thành viên</h3>
@@ -388,19 +458,22 @@ export default function TeamPage() {
                     <h3 className="font-semibold mb-1">{user.name}</h3>
                     <p className="text-sm text-muted-foreground mb-2">{user.role}</p>
                     <div className="flex flex-wrap gap-1 mb-4">
-                      {user.roles.slice(0, 2).map((roleName) => (
-                        <Badge
-                          key={roleName}
-                          variant="outline"
-                          style={{
-                            borderColor: getRoleColor(roleName),
-                            color: getRoleColor(roleName),
-                          }}
-                          className="text-xs"
-                        >
-                          {getRoleDisplayName(roleName)}
-                        </Badge>
-                      ))}
+                      {user.roles.slice(0, 2).map((role) => {
+                        const roleName = getRoleName(role)
+                        return (
+                          <Badge
+                            key={roleName}
+                            variant="outline"
+                            style={{
+                              borderColor: getRoleColor(roleName),
+                              color: getRoleColor(roleName),
+                            }}
+                            className="text-xs"
+                          >
+                            {getRoleDisplayName(roleName)}
+                          </Badge>
+                        )
+                      })}
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
@@ -474,19 +547,22 @@ export default function TeamPage() {
                         </td>
                         <td className="p-4">
                           <div className="flex flex-wrap gap-1">
-                            {user.roles.map((roleName) => (
-                              <Badge
-                                key={roleName}
-                                variant="outline"
-                                style={{
-                                  borderColor: getRoleColor(roleName),
-                                  color: getRoleColor(roleName),
-                                }}
-                                className="text-xs"
-                              >
-                                {getRoleDisplayName(roleName)}
-                              </Badge>
-                            ))}
+                            {user.roles.map((role) => {
+                              const roleName = getRoleName(role)
+                              return (
+                                <Badge
+                                  key={roleName}
+                                  variant="outline"
+                                  style={{
+                                    borderColor: getRoleColor(roleName),
+                                    color: getRoleColor(roleName),
+                                  }}
+                                  className="text-xs"
+                                >
+                                  {getRoleDisplayName(roleName)}
+                                </Badge>
+                              )
+                            })}
                           </div>
                         </td>
                         <td className="p-4">
@@ -585,24 +661,27 @@ export default function TeamPage() {
                   <div>
                     <p className="text-sm font-medium mb-2">Vai trò</p>
                     <div className="flex flex-wrap gap-2">
-                      {selectedUser.roles.map((roleName) => (
-                        <Badge
-                          key={roleName}
-                          style={{
-                            backgroundColor: `${getRoleColor(roleName)}20`,
-                            color: getRoleColor(roleName),
-                          }}
-                        >
-                          {getRoleDisplayName(roleName)}
-                        </Badge>
-                      ))}
+                      {selectedUser.roles.map((role) => {
+                        const roleName = getRoleName(role)
+                        return (
+                          <Badge
+                            key={roleName}
+                            style={{
+                              backgroundColor: `${getRoleColor(roleName)}20`,
+                              color: getRoleColor(roleName),
+                            }}
+                          >
+                            {getRoleDisplayName(roleName)}
+                          </Badge>
+                        )
+                      })}
                     </div>
                   </div>
                 </TabsContent>
                 <TabsContent value="tasks" className="mt-4">
                   <div className="space-y-3">
-                    {mockTasks
-                      .filter((t) => t.assignees.some((a) => a.id === selectedUser.id))
+                    {tasks
+                      .filter((t) => t.assignees?.some((a: any) => a.id === selectedUser.id) || t.assigneeIds?.includes(selectedUser.id))
                       .slice(0, 5)
                       .map((task) => (
                         <div key={task.id} className="flex items-center justify-between p-3 rounded-lg border">

@@ -56,8 +56,9 @@ export function GroupInfoSheet({ open, onOpenChange, room, currentUserId }: Grou
 
   if (!room || room.type !== "group") return null
 
-  const members = mockUsers.filter((u) => room.members.includes(u.id))
-  const availableUsers = mockUsers.filter((u) => !room.members.includes(u.id) && u.id !== currentUserId)
+  const members = room.members || []
+  const memberIds = members.map((m: any) => m.id)
+  const availableUsers = mockUsers.filter((u) => !memberIds.includes(u.id) && u.id !== currentUserId)
   
   const filteredUsers = availableUsers.filter(
     (user) =>

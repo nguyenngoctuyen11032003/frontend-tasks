@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Mail, UserPlus, X } from "lucide-react"
+import { Mail, UserPlus, X, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { mockRoleDefinitions } from "@/mocks/data"
 import { PERMISSION_LABELS } from "@/types"
+import { useRolesStore } from "@/stores/roles-store"
+import api from "@/lib/api"
+import { toast } from "sonner"
 import type { RoleDefinition } from "@/types"
 
 interface InviteMemberModalProps {
@@ -20,12 +23,14 @@ interface InviteMemberModalProps {
 }
 
 export function InviteMemberModal({ open, onOpenChange }: InviteMemberModalProps) {
+  const { roles } = useRolesStore()
   const [email, setEmail] = useState("")
   const [selectedRole, setSelectedRole] = useState<string>("")
   const [emailList, setEmailList] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const getRoleColor = (roleName: string) => {
-    const role = mockRoleDefinitions.find((r) => r.name === roleName)
+    const role = roles.find((r) => r.name === roleName)
     return role?.color || "#64748b"
   }
 
@@ -44,17 +49,41 @@ export function InviteMemberModal({ open, onOpenChange }: InviteMemberModalProps
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 
-  const handleSendInvites = () => {
-    // Logic to send invites would go here
-    console.log("Sending invites to:", emailList, "with role:", selectedRole)
-    // Reset form
-    setEmailList([])
-    setEmail("")
-    setSelectedRole("")
-    onOpenChange(false)
+  const handleSendInvites = async () => {
+    if (!selectedRole) {
+      toast.error("Vui lòng chọn vai trò")
+      return
+    }
+
+    if (emailList.length === 0) {
+      toast.error("Vui lòng thêm ít nhất một email")
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      
+      // Send invites for each email
+      for (const userEmail of emailList) {
+        await api.inviteUser(userEmail, [selectedRole])
+      }
+      
+      toast.success(`Đã gửi lời mời thành công đến ${emailList.length} người`)
+      
+      // Reset form
+      setEmailList([])
+      setEmail("")
+      setSelectedRole("")
+      onOpenChange(false)
+    } catch (err) {
+      console.error("Error sending invites:", err)
+      toast.error(err instanceof Error ? err.message : "Lỗi khi gửi lời mời")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const selectedRoleData = mockRoleDefinitions.find((r) => r.name === selectedRole)
+  const selectedRoleData = roles.find((r) => r.name === selectedRole)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,7 +160,7 @@ export function InviteMemberModal({ open, onOpenChange }: InviteMemberModalProps
                 <SelectValue placeholder="Chọn vai trò cho thành viên mới" />
               </SelectTrigger>
               <SelectContent>
-                {mockRoleDefinitions
+                {roles
                   .filter((role) => !role.isSystem || role.name === "member" || role.name === "guest")
                   .map((role) => (
                     <SelectItem key={role.id} value={role.name}>
@@ -201,16 +230,25 @@ export function InviteMemberModal({ open, onOpenChange }: InviteMemberModalProps
         </div>
 
         <div className="flex gap-2 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1" disabled={isSubmitting}>
             Hủy
           </Button>
           <Button
             onClick={handleSendInvites}
-            disabled={emailList.length === 0 || !selectedRole}
+            disabled={emailList.length === 0 || !selectedRole || isSubmitting}
             className="flex-1"
           >
-            <Mail className="mr-2 h-4 w-4" />
-            Gửi lời mời ({emailList.length})
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Đang gửi...
+              </>
+            ) : (
+              <>
+                <Mail className="mr-2 h-4 w-4" />
+                Gửi lời mời ({emailList.length})
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

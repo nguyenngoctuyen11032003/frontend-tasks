@@ -353,11 +353,12 @@ export interface Note {
 // ==================== CHAT ====================
 export interface Chat {
   id: string
-  name?: string
+  name?: string | null
   type: "group" | "direct"
-  members: string[]
+  members: User[]
+  messages?: Message[]
   lastMessage?: Message
-  unreadCount: number
+  unreadCount?: number
   createdAt: string
   updatedAt: string
 }
@@ -366,13 +367,15 @@ export type ChatRoom = Chat
 
 export interface Message {
   id: string
-  chatId: string
+  chatId?: string
   content: string
   type: "text" | "image" | "file"
   sender: User
-  attachments?: Attachment[]
-  readBy: string[]
+  chat?: Chat
+  attachmentUrls?: string[]
+  readBy: User[]
   createdAt: string
+  updatedAt?: string
 }
 
 // ==================== COMMON ====================

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Mail, Send, Paperclip, X } from "lucide-react"
+import { Mail, Send, Paperclip, X, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import api from "@/lib/api"
 import type { User } from "@/types"
 
 interface EmailComposeModalProps {
@@ -22,6 +23,7 @@ export function EmailComposeModal({ open, onOpenChange, recipient }: EmailCompos
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const getInitials = (name: string) => {
     return name
@@ -43,20 +45,40 @@ export function EmailComposeModal({ open, onOpenChange, recipient }: EmailCompos
     setAttachments(attachments.filter((_, i) => i !== index))
   }
 
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     if (!subject.trim() || !body.trim()) {
       toast.error("Vui lòng nhập tiêu đề và nội dung email")
       return
     }
 
-    // Logic to send email would go here
-    toast.success(`Email đã được gửi đến ${recipient?.name}`)
-    
-    // Reset form
-    setSubject("")
-    setBody("")
-    setAttachments([])
-    onOpenChange(false)
+    if (!recipient) {
+      toast.error("Không tìm thấy người nhận")
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      
+      // Send email via API
+      await api.sendEmail({
+        to: recipient.email,
+        subject,
+        content: body,
+      })
+      
+      toast.success(`Email đã được gửi đến ${recipient.name}`)
+      
+      // Reset form
+      setSubject("")
+      setBody("")
+      setAttachments([])
+      onOpenChange(false)
+    } catch (err) {
+      console.error("Error sending email:", err)
+      toast.error(err instanceof Error ? err.message : "Lỗi khi gửi email")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -171,12 +193,21 @@ export function EmailComposeModal({ open, onOpenChange, recipient }: EmailCompos
         </div>
 
         <div className="flex gap-2 mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1" disabled={isSubmitting}>
             Hủy
           </Button>
-          <Button onClick={handleSendEmail} className="flex-1">
-            <Send className="mr-2 h-4 w-4" />
-            Gửi email
+          <Button onClick={handleSendEmail} className="flex-1" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Đang gửi...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Gửi email
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

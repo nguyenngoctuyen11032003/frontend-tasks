@@ -46,6 +46,7 @@ export function NotificationBell() {
   const unreadCount = useNotificationsStore((state) => state.unreadCount)
   const loading = useNotificationsStore((state) => state.loading)
   const fetchNotifications = useNotificationsStore((state) => state.fetchNotifications)
+  const fetchUnreadCount = useNotificationsStore((state) => state.fetchUnreadCount)
   const markAsRead = useNotificationsStore((state) => state.markAsRead)
   const markAllAsRead = useNotificationsStore((state) => state.markAllAsRead)
   const deleteNotification = useNotificationsStore((state) => state.deleteNotification)
@@ -59,11 +60,14 @@ export function NotificationBell() {
   // Initialize: fetch notifications on component mount and subscribe to socket
   useEffect(() => {
     if (!isInitialized) {
+      // Fetch unread count immediately for badge display
+      fetchUnreadCount()
+      // Then fetch notifications list
       fetchNotifications()
       subscribeToSocket()
       setIsInitialized(true)
     }
-  }, [isInitialized, fetchNotifications, subscribeToSocket])
+  }, [isInitialized, fetchNotifications, fetchUnreadCount, subscribeToSocket])
 
   // Real-time: add new notifications from socket
   useEffect(() => {

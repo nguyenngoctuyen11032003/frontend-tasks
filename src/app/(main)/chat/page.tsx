@@ -43,67 +43,90 @@ import { Badge } from "@/components/ui/badge"
 import { MessageList } from "@/components/chat/message-list"
 import { ChatInput } from "@/components/chat/chat-input"
 import { GroupInfoSheet } from "@/components/chat/group-info-sheet"
-import { mockUsers, mockChatRooms, mockMessages } from "@/mocks/data"
 import { convertMockMessages, type MockMessage } from "@/lib/chat"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useSocketMessages, useSocketTyping, useSocketUserStatus } from "@/hooks/use-socket"
+import { useChats, useMessages, useSendMessage, useCreateChat } from "@/hooks/use-chats"
+import { useAuthStore } from "@/stores/auth-store"
+import api from "@/lib/api"
 import type { ChatRoom, Message } from "@/types"
 
 export default function ChatPage() {
   const searchParams = useSearchParams()
   const userIdParam = searchParams.get("userId")
+  const { user } = useAuthStore()
+  const currentUserId = user?.id || "user-1"
   
-  const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(mockChatRooms[0])
+  // API data fetching
+  const { data: chatsResponse, isLoading: chatsLoading, error: chatsError } = useChats()
+  
+  useEffect(() => {
+    console.log('[ChatPage] chatsResponse:', chatsResponse)
+    console.log('[ChatPage] chatsError:', chatsError)
+  }, [chatsResponse, chatsError])
+  const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null)
+  const { data: selectedChatData } = useChats() // We'll filter this locally
+  
+  // Messages for selected room
+  const { data: messagesData, isLoading: messagesLoading, fetchNextPage } = useMessages(selectedRoom?.id || "")
+  const { mutate: sendMessage, isPending: isSending } = useSendMessage()
+  const { mutate: createChat, isPending: isCreating } = useCreateChat()
+  
+  // Local state
   const [searchQuery, setSearchQuery] = useState("")
-  const [messages, setMessages] = useState<Message[]>(convertMockMessages(mockMessages as unknown as MockMessage[]))
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false)
   const [groupName, setGroupName] = useState("")
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [memberSearchQuery, setMemberSearchQuery] = useState("")
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set())
-  const [channelName, setChannelName] = useState("")
-  const [channelDescription, setChannelDescription] = useState("")
-  const [isPublicChannel, setIsPublicChannel] = useState(false)
   const [mutedRooms, setMutedRooms] = useState<Set<string>>(new Set())
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [roomToDelete, setRoomToDelete] = useState<ChatRoom | null>(null)
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false)
-  
-  const currentUserId = "user-1" // Replace with actual user ID from auth - Using user-1 to match mock data
 
-  // Socket hooks for real-time features (with error handling)
+  // Socket hooks for real-time features
   const { onlineUsers } = useSocketUserStatus()
   const { typingUsers = [], startTyping, stopTyping } = useSocketTyping(selectedRoom?.id || "")
   
   // Listen for new messages via socket
   useSocketMessages(selectedRoom?.id || "", (newMessage) => {
-    setMessages((prev) => [...prev, newMessage])
+    // Messages will be updated via React Query invalidation
   })
 
-  // Handle navigation from team page
+  // Set initial selected room
   useEffect(() => {
-    if (userIdParam) {
-      // Find or create direct chat with this user
-      const directChat = mockChatRooms.find(
-        (room) => room.type === "direct" && room.members.includes(userIdParam) && room.members.includes(currentUserId)
-      )
-      if (directChat) {
-        setSelectedRoom(directChat)
+    if (chatsResponse?.items && Array.isArray(chatsResponse.items) && chatsResponse.items.length > 0) {
+      // If userId param, find or create direct chat
+      if (userIdParam) {
+        const directChat = chatsResponse.items.find(
+          (chat) => chat?.type === "direct" && chat?.members?.some((m: any) => m?.id === userIdParam)
+        )
+        if (directChat) {
+          setSelectedRoom(directChat)
+        }
+      } else {
+        // Select first chat by default
+        if (!selectedRoom && chatsResponse.items[0]) {
+          setSelectedRoom(chatsResponse.items[0])
+        }
       }
     }
-  }, [userIdParam, currentUserId])
+  }, [chatsResponse?.items, userIdParam, selectedRoom])
 
-  const filteredRooms = mockChatRooms.filter((room) => {
-    if (room.type === "direct") {
-      const otherUserId = room.members.find((id) => id !== currentUserId)
-      const otherUser = mockUsers.find((u) => u.id === otherUserId)
-      return otherUser?.name.toLowerCase().includes(searchQuery.toLowerCase())
-    }
-    return room.name?.toLowerCase().includes(searchQuery.toLowerCase())
-  })
+  const chats = Array.isArray(chatsResponse?.items) ? chatsResponse.items.filter(Boolean) : []
+  
+  const filteredRooms = chats
+    .filter((chat) => {
+      if (!chat || !chat.id) return false
+      const roomName = chat.type === "direct" 
+        ? chat.members?.find((m: any) => m?.id !== currentUserId)?.name || "Unknown"
+        : chat.name || "Group"
+      return roomName?.toLowerCase?.().includes(searchQuery.toLowerCase()) ?? false
+    })
 
-  const roomMessages = selectedRoom ? messages.filter((m) => m.chatId === selectedRoom.id) : []
+  // Get messages from React Query
+  const allMessages = messagesData?.pages?.flatMap((page) => page.items) || []
 
   const getInitials = (name: string) => {
     return name
@@ -116,10 +139,8 @@ export default function ChatPage() {
 
   const getRoomInfo = (room: ChatRoom) => {
     if (room.type === "direct") {
-      const otherUserId = room.members.find((id) => id !== currentUserId)
-      const otherUser = mockUsers.find((u) => u.id === otherUserId)
-      // Check real-time online status from socket
-      const isOnline = onlineUsers.includes(otherUserId || "")
+      const otherUser = room.members?.find((m: any) => m.id !== currentUserId)
+      const isOnline = onlineUsers.includes(otherUser?.id || "")
       return {
         name: otherUser?.name || "Unknown",
         avatar: otherUser?.avatarUrl,
@@ -155,54 +176,44 @@ export default function ChatPage() {
     if (!selectedRoom) return
     if (!content.trim() && !file) return
 
-    // Stop typing indicator
     stopTyping()
-
-    const currentUser = mockUsers.find((u) => u.id === currentUserId) || mockUsers[0]
-
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
+    
+    sendMessage({
       chatId: selectedRoom.id,
-      sender: currentUser,
-      content,
+      content: content.trim(),
       type,
-      createdAt: new Date().toISOString(),
-      readBy: [currentUserId],
-      ...(file && {
-        attachments: [
-          {
-            id: `attachment-${Date.now()}`,
-            name: file.name,
-            size: file.size,
-            url: URL.createObjectURL(file), // In production, upload to server first
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: currentUser,
-          },
-        ],
-      }),
-    }
-
-    setMessages([...messages, newMessage])
-    toast.success("Đã gửi tin nhắn")
+    }, {
+      onSuccess: () => {
+        toast.success("Tin nhắn đã gửi")
+      },
+      onError: (error: any) => {
+        toast.error(error.message || "Gửi tin nhắn thất bại")
+      }
+    })
   }
 
   const handleCreateGroup = () => {
-    if (!groupName.trim()) {
-      toast.error("Vui lòng nhập tên nhóm")
-      return
-    }
-    if (selectedMembers.length === 0) {
-      toast.error("Vui lòng chọn ít nhất 1 thành viên")
+    if (!groupName.trim() || selectedMembers.length === 0) {
+      toast.error("Vui lòng nhập tên nhóm và chọn thành viên")
       return
     }
 
-    // Create new group chat room
-    toast.success(`Đã tạo nhóm "${groupName}" với ${selectedMembers.length} thành viên`)
-    setIsCreateGroupOpen(false)
-    setGroupName("")
-    setSelectedMembers([])
-    setMemberSearchQuery("")
+    createChat({
+      name: groupName,
+      type: "group",
+      participantIds: selectedMembers,
+    }, {
+      onSuccess: () => {
+        setIsCreateGroupOpen(false)
+        setGroupName("")
+        setSelectedMembers([])
+        setMemberSearchQuery("")
+        toast.success("Nhóm chat đã được tạo")
+      },
+      onError: (error: any) => {
+        toast.error(error.message || "Tạo nhóm thất bại")
+      }
+    })
   }
 
   const toggleMember = (userId: string) => {
@@ -211,18 +222,34 @@ export default function ChatPage() {
     )
   }
 
-  const filteredMembersForGroup = mockUsers.filter(
+  // Get all members from all chats for group creation
+  const allMembers = Array.from(
+    new Map(
+      (chats || [])
+        .flatMap((chat) => chat.members || [])
+        .map((member: any) => [member.id, member])
+    ).values()
+  ) as any[]
+
+  const filteredMembersForGroup = allMembers.filter(
     (user) =>
       user.id !== currentUserId &&
       (user.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+        user.email?.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
+        false)
   )
 
   const getRoomTypingUsersNames = (): string => {
     // typingUsers is already a string[] of user IDs in current room
     const names = typingUsers
       .filter((id) => id !== currentUserId)
-      .map((id) => mockUsers.find((u) => u.id === id)?.name)
+      .map((id) => {
+        // First try to find in room members
+        const member = selectedRoom?.members?.find((m: any) => m.id === id)
+        if (member) return member.name
+        // Fallback
+        return "Ai đó"
+      })
       .filter(Boolean) as string[]
     
     if (names.length === 0) return ""
@@ -257,64 +284,72 @@ export default function ChatPage() {
         </div>
         <ScrollArea className="flex-1">
           <div className="p-2">
-            {filteredRooms.map((room) => {
-              const info = getRoomInfo(room)
-              const lastMessage = messages
-                .filter((m) => m.chatId === room.id)
-                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+            {filteredRooms?.length > 0 ? (
+              filteredRooms.map((room) => {
+                if (!room || !room.id) return null
+                
+                const info = getRoomInfo(room)
+                const lastMessage = allMessages
+                  .filter((m) => m.chatId === room.id)
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
 
-              return (
-                <button
-                  key={room.id}
-                  onClick={() => setSelectedRoom(room)}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors",
-                    selectedRoom?.id === room.id ? "bg-accent" : "hover:bg-accent/50",
-                  )}
-                >
-                  <div className="relative shrink-0">
-                    {room.type === "direct" ? (
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={info.avatar || "/placeholder.svg"} alt={info.name} />
-                        <AvatarFallback>{getInitials(info.name)}</AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Hash className="h-5 w-5 text-primary" />
-                      </div>
+                return (
+                  <button
+                    key={room.id}
+                    onClick={() => setSelectedRoom(room)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors",
+                      selectedRoom?.id === room.id ? "bg-accent" : "hover:bg-accent/50",
                     )}
-                    {info.online && (
-                      <div className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-card" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {room.type === "group" && <Hash className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        <span className="font-medium truncate text-sm">{info.name}</span>
-                        {mutedRooms.has(room.id) && (
-                          <BellOff className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Đã tắt thông báo" />
+                  >
+                    <div className="relative shrink-0">
+                      {room.type === "direct" ? (
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={info.avatar || "/placeholder.svg"} alt={info.name} />
+                          <AvatarFallback>{getInitials(info.name)}</AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Hash className="h-5 w-5 text-primary" />
+                        </div>
+                      )}
+                      {info.online && (
+                        <div className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-card" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {room.type === "group" && <Hash className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          <span className="font-medium truncate text-sm">{info.name}</span>
+                          {mutedRooms.has(room.id) && (
+                            <BellOff className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Đã tắt thông báo" />
+                          )}
+                        </div>
+                        {lastMessage && (
+                          <span className="text-xs text-muted-foreground shrink-0">{formatTime(lastMessage.createdAt)}</span>
                         )}
                       </div>
                       {lastMessage && (
-                        <span className="text-xs text-muted-foreground shrink-0">{formatTime(lastMessage.createdAt)}</span>
+                        <p className="text-sm text-muted-foreground line-clamp-1">
+                          {lastMessage.sender?.id === currentUserId ? "Bạn: " : ""}
+                          {lastMessage.content}
+                        </p>
                       )}
                     </div>
-                    {lastMessage && (
-                      <p className="text-sm text-muted-foreground line-clamp-1">
-                        {lastMessage.sender.id === currentUserId ? "Bạn: " : ""}
-                        {lastMessage.content}
-                      </p>
+                    {((room as any).unreadCount ?? 0) > 0 && (
+                      <div className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center shrink-0">
+                        {(room as any).unreadCount}
+                      </div>
                     )}
-                  </div>
-                  {room.unreadCount > 0 && (
-                    <div className="h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center shrink-0">
-                      {room.unreadCount}
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+                  </button>
+                )
+            })
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>Chưa có cuộc trò chuyện</p>
+              </div>
+            )}
           </div>
         </ScrollArea>
       </div>
@@ -424,9 +459,9 @@ export default function ChatPage() {
           <div className="flex-1 overflow-hidden">
             <ScrollArea className="h-full p-4">
               <MessageList
-                messages={roomMessages}
+                messages={allMessages}
                 currentUserId={currentUserId}
-                users={mockUsers}
+                users={selectedRoom?.members || []}
                 expandedMessages={expandedMessages}
                 onToggleExpand={(messageId) => {
                   setExpandedMessages((prev) => {
@@ -493,14 +528,17 @@ export default function ChatPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (roomToDelete) {
-                  // Remove messages from this room
-                  setMessages(prev => prev.filter(m => m.chatId !== roomToDelete.id))
-                  // Deselect if this was selected
-                  if (selectedRoom?.id === roomToDelete.id) {
-                    setSelectedRoom(null)
-                  }
-                  toast.success("Đã xóa cuộc trò chuyện")
-                  setRoomToDelete(null)
+                  // Call API to delete chat - React Query will handle cache invalidation
+                  api.deleteChat(roomToDelete.id).then(() => {
+                    // Deselect if this was selected
+                    if (selectedRoom?.id === roomToDelete.id) {
+                      setSelectedRoom(null)
+                    }
+                    toast.success("Đã xóa cuộc trò chuyện")
+                    setRoomToDelete(null)
+                  }).catch((error) => {
+                    toast.error(error.message || "Xóa cuộc trò chuyện thất bại")
+                  })
                 }
               }}
             >
@@ -563,7 +601,7 @@ export default function ChatPage() {
               {selectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-lg">
                   {selectedMembers.map((memberId) => {
-                    const member = mockUsers.find((u) => u.id === memberId)
+                    const member = allMembers.find((u) => u.id === memberId)
                     if (!member) return null
                     return (
                       <Badge key={memberId} variant="secondary" className="gap-1 pr-1">

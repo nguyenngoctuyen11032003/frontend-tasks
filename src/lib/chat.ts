@@ -18,6 +18,9 @@ export interface MockMessage {
 // Convert MockMessage to Message with proper User objects
 export function convertMockMessage(mockMessage: MockMessage): Message {
   const sender = mockUsers.find((u) => u.id === mockMessage.senderId) || mockUsers[0]
+  const readByUsers = mockMessage.readBy
+    .map((userId) => mockUsers.find((u) => u.id === userId))
+    .filter((user): user is User => user !== undefined)
 
   return {
     id: mockMessage.id,
@@ -25,20 +28,8 @@ export function convertMockMessage(mockMessage: MockMessage): Message {
     content: mockMessage.content,
     type: mockMessage.type,
     sender,
-    attachments: mockMessage.fileUrl
-      ? [
-          {
-            id: `attachment-${mockMessage.id}`,
-            name: mockMessage.fileName || "file",
-            url: mockMessage.fileUrl,
-            size: mockMessage.fileSize || 0,
-            type: mockMessage.type === "image" ? "image/jpeg" : "application/pdf",
-            uploadedAt: mockMessage.createdAt,
-            uploadedBy: sender,
-          },
-        ]
-      : undefined,
-    readBy: mockMessage.readBy,
+    attachmentUrls: mockMessage.fileUrl ? [mockMessage.fileUrl] : undefined,
+    readBy: readByUsers,
     createdAt: mockMessage.createdAt,
   }
 }

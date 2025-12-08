@@ -260,86 +260,9 @@ export const handlers = [
   }),
 
   // ==================== CHAT ====================
-  http.get(`${API_BASE_URL}/chats`, async () => {
-    await delay(MOCK_DELAY)
-    return HttpResponse.json(mockChatRooms)
-  }),
-
-  http.get(`${API_BASE_URL}/chats/:id`, async ({ params }) => {
-    await delay(MOCK_DELAY)
-    const chat = mockChatRooms.find((c) => c.id === params.id)
-    if (!chat) {
-      return HttpResponse.json({ message: "Không tìm thấy cuộc trò chuyện" }, { status: 404 })
-    }
-    return HttpResponse.json(chat)
-  }),
-
-  http.get(`${API_BASE_URL}/chats/:id/messages`, async ({ params, request }) => {
-    await delay(MOCK_DELAY)
-    const url = new URL(request.url)
-    const page = Number(url.searchParams.get("page")) || 1
-    const pageSize = 50
-
-    const chatMessages = mockMessages.filter((m) => m.roomId === params.id)
-    const total = chatMessages.length
-    const start = (page - 1) * pageSize
-    const mockItems = chatMessages.slice(start, start + pageSize)
-    
-    // Convert mock messages to Message type
-    const items: Message[] = mockItems.map((msg) => ({
-      id: msg.id,
-      chatId: msg.roomId,
-      content: msg.content,
-      type: msg.type,
-      sender: mockUsers.find(u => u.id === msg.senderId)!,
-      readBy: msg.readBy,
-      createdAt: msg.createdAt,
-    }))
-
-    const response: PaginatedResponse<Message> = {
-      items,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    }
-
-    return HttpResponse.json(response)
-  }),
-
-  http.post(`${API_BASE_URL}/chats/:id/messages`, async ({ params, request }) => {
-    await delay(MOCK_DELAY)
-    const body = (await request.json()) as { content: string; type: "text" | "image" | "file" }
-
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      chatId: params.id as string,
-      sender: currentUser,
-      content: body.content,
-      type: body.type || "text",
-      createdAt: new Date().toISOString(),
-      readBy: [currentUser.id],
-    }
-
-    return HttpResponse.json(newMessage, { status: 201 })
-  }),
-
-  http.post(`${API_BASE_URL}/chats`, async ({ request }) => {
-    await delay(MOCK_DELAY)
-    const body = (await request.json()) as { name?: string; type: "group" | "direct"; memberIds: string[] }
-
-    const newChat = {
-      id: `room-${Date.now()}`,
-      type: body.type,
-      name: body.name,
-      members: [currentUser.id, ...body.memberIds],
-      unreadCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-
-    return HttpResponse.json(newChat, { status: 201 })
-  }),
+  // DISABLED: Use real API from backend instead of mock data
+  // MSW handlers for chats are disabled to allow real database queries
+  // All chat requests go to actual backend API at ${API_BASE_URL}
 
   // ==================== USERS ====================
   http.get(`${API_BASE_URL}/users`, async () => {

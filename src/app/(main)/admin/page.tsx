@@ -1219,16 +1219,16 @@ export default function AdminPage() {
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "h-2 w-2 rounded-full",
-                        systemHealth.database.connected ? "bg-green-500" : "bg-red-500"
+                        systemHealth.database.status === "connected" ? "bg-green-500" : "bg-red-500"
                       )} />
                       <p className="font-medium">
-                        {systemHealth.database.connected ? "Đã kết nối" : "Mất kết nối"}
+                        {systemHealth.database.status === "connected" ? "Đã kết nối" : "Mất kết nối"}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Bộ nhớ sử dụng</p>
-                    <p className="font-medium">{systemHealth.server.memoryUsage.heapUsed} MB / {systemHealth.server.memoryUsage.heapTotal} MB</p>
+                    <p className="font-medium">{systemHealth.server.memoryUsage} MB</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Thời gian hoạt động</p>

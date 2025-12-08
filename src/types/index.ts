@@ -219,23 +219,6 @@ export interface TopUser {
   activityCount: number
 }
 
-export interface SystemHealth {
-  status: 'healthy' | 'unhealthy'
-  database: {
-    connected: boolean
-  }
-  server: {
-    uptime: number
-    memoryUsage: {
-      rss: number
-      heapTotal: number
-      heapUsed: number
-      external: number
-    }
-  }
-  timestamp: string
-}
-
 export interface DatabaseCleanupResult {
   deletedActivityLogs: number
   deletedSessions: number
@@ -428,4 +411,46 @@ export interface ApiResponse<T> {
   data: T
   message?: string
   success: boolean
+}
+
+// ==================== DASHBOARD ====================
+export type DateRange = "today" | "yesterday" | "week" | "month" | "year" | "custom"
+
+export interface DashboardStats {
+  totalTasks: number
+  completedTasks: number
+  tasksInProgress: number
+  totalProjects: number
+  activeProjects: number
+  teamMembers: number
+  thisWeekCompleted: number
+  thisMonthCompleted: number
+  performancePercentage: number
+}
+
+export interface UserActivityStat {
+  date: string
+  count: number
+  timestamp?: string
+}
+
+export interface TopUser {
+  id: string
+  name: string
+  email: string
+  avatarUrl?: string
+  actionCount: number
+  lastActive: string
+}
+
+export interface SystemHealth {
+  status: "healthy" | "warning" | "critical"
+  database: {
+    status: "connected" | "disconnected"
+    responseTime: number
+  }
+  server: {
+    uptime: number
+    memoryUsage: number
+  }
 }

@@ -10,6 +10,7 @@ import type {
   SystemHealth,
   DatabaseCleanupResult,
   PaginatedResponse,
+  DateRange,
 } from "@/types"
 import { toast } from "sonner"
 
@@ -31,6 +32,7 @@ interface AdminState {
   topUsers: TopUser[]
   statsLoading: boolean
   statsError: string | null
+  selectedDateRange: DateRange
 
   // System Health
   systemHealth: SystemHealth | null
@@ -46,7 +48,7 @@ interface AdminState {
   clearActivityLogs: (days?: number) => Promise<void>
 
   // Actions - Dashboard Stats
-  fetchDashboardStats: () => Promise<void>
+  fetchDashboardStats: (dateRange?: DateRange) => Promise<void>
   fetchUserActivityStats: (days?: number) => Promise<void>
   fetchRecentActivity: (limit?: number) => Promise<void>
   fetchTopUsers: (limit?: number) => Promise<void>
@@ -56,6 +58,12 @@ interface AdminState {
 
   // Actions - Database Maintenance
   performDatabaseCleanup: () => Promise<DatabaseCleanupResult | null>
+
+  // Actions - Utility
+  setIsLoading: (loading: boolean) => void
+  setError: (error: string | null) => void
+  clearError: () => void
+  setDateRange: (range: DateRange) => void
 
   // Actions - Reset
   resetState: () => void
@@ -74,6 +82,7 @@ const initialState = {
   topUsers: [],
   statsLoading: false,
   statsError: null,
+  selectedDateRange: "month" as DateRange,
   systemHealth: null,
   healthLoading: false,
   healthError: null,
@@ -157,12 +166,12 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   // Dashboard Stats
-  fetchDashboardStats: async () => {
+  fetchDashboardStats: async (dateRange?: DateRange) => {
     set({ statsLoading: true, statsError: null })
     try {
-      console.log('📊 Fetching dashboard stats...')
+      console.log('≡ƒôè Fetching dashboard stats...')
       const stats = await api.getDashboardStats()
-      console.log('✅ Dashboard stats fetched:', stats)
+      console.log('Γ£à Dashboard stats fetched:', stats)
       set({ dashboardStats: stats, statsLoading: false })
     } catch (error: any) {
       console.error('❌ Failed to fetch dashboard stats:', error)
@@ -242,6 +251,23 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       })
       return null
     }
+  },
+
+  // Utility Methods
+  setIsLoading: (loading: boolean) => {
+    set({ statsLoading: loading })
+  },
+
+  setError: (error: string | null) => {
+    set({ statsError: error })
+  },
+
+  clearError: () => {
+    set({ statsError: null })
+  },
+
+  setDateRange: (range: DateRange) => {
+    set({ selectedDateRange: range })
   },
 
   // Reset

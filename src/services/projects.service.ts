@@ -292,6 +292,27 @@ class ProjectsService {
     }
   }
 
+  async getAllStatistics(): Promise<any> {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/projects/statistics`,
+        {
+          method: "GET",
+          headers: this.getHeaders(),
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data.data || data
+    } catch (error) {
+      this.handleError(error)
+    }
+  }
+
   async getStatistics(projectId: string): Promise<ProjectStatistics> {
     try {
       const response = await fetch(

@@ -50,6 +50,7 @@ import { useCustomTheme } from "@/hooks/use-custom-theme"
 import { ThemeEditorModal } from "@/components/theme-editor-modal"
 import { ThemeManager, themePresets, CustomTheme } from "@/lib/theme"
 import { toast } from "sonner"
+import { usePermission } from "@/hooks/use-permission"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +67,7 @@ function SettingsContent() {
   const tabParam = searchParams.get("tab")
   const { theme, setTheme } = useTheme()
   const { user: authUser, setUser: setAuthUser } = useAuthStore()
+  const { can, isAdmin } = usePermission()
   const [currentUser, setCurrentUser] = useState<UserType | null>(null)
   const [activeTab, setActiveTab] = useState(tabParam || "profile")
   const [avatarModalOpen, setAvatarModalOpen] = useState(false)
@@ -452,10 +454,12 @@ function SettingsContent() {
             <Shield className="h-4 w-4" />
             <span className="hidden sm:inline">Bảo mật</span>
           </TabsTrigger>
-          <TabsTrigger value="system" className="gap-2">
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">Hệ thống</span>
-          </TabsTrigger>
+          {(can("settings.view") || isAdmin()) && (
+            <TabsTrigger value="system" className="gap-2">
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">Hệ thống</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Profile Tab */}

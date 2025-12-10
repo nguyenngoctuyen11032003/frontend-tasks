@@ -168,13 +168,10 @@ export const useProjectsStore = create<ProjectsStore>()(
             set({ createLoading: true, error: null })
             const project = await projectsService.createProject(payload)
 
-            // Add to projects list and refresh
-            const state = get()
-            set({
-              projects: [project, ...state.projects],
-              createLoading: false,
-            })
-
+            // Refresh the entire projects list to ensure consistency
+            await get().fetchProjects()
+            
+            set({ createLoading: false })
             return project
           } catch (error) {
             const errorMessage =

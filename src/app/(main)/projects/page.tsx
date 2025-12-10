@@ -69,7 +69,7 @@ export default function ProjectsPage() {
       progressRange: undefined,
       search: "",
     })
-  }, [setProjectFilters])
+  }, [setProjectFilters, setFilters])
 
   // Fetch projects on mount and when filters/search change
   useEffect(() => {

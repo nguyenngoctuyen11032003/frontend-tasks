@@ -16,8 +16,9 @@ import {
   TeamProductivityChart,
   ActivityTimeline,
 } from "@/components/analytics"
-import { mockProjects, mockTasks } from "@/mocks/data"
 import { useDashboard } from "@/hooks/use-dashboard"
+import { useTasksStore } from "@/stores/tasks-store"
+import { useProjectsStore } from "@/stores/projects-store"
 import { DateRange } from "@/types"
 import Link from "next/link"
 import {
@@ -43,36 +44,81 @@ const upcomingDeadlines = [
 export default function DashboardPage() {
   const router = useRouter()
   const { stats, activities, isLoading, error, refetch, updateDateRange } = useDashboard()
-  const urgentTasks = mockTasks.filter((t) => t.priority === "urgent" && t.status !== "done").slice(0, 3)
-  const recentProjects = mockProjects.slice(0, 3)
+  const { tasks, fetchTasks } = useTasksStore()
+  const { projects, fetchProjects } = useProjectsStore()
+  const [dateFilter, setDateFilter] = useState<string>("week")
+  
+  // Fetch tasks and projects on mount
+  useEffect(() => {
+    fetchTasks()
+    fetchProjects()
+  }, [fetchTasks, fetchProjects])
+  
+  const urgentTasks = tasks.filter((t) => t.priority === "urgent" && t.status !== "done").slice(0, 3)
+  const recentProjects = projects.slice(0, 3)
 
-  // Analytics data
-  const taskCompletionData = [
-    { name: "T2", completed: 12, inProgress: 5, todo: 8 },
-    { name: "T3", completed: 15, inProgress: 7, todo: 6 },
-    { name: "T4", completed: 18, inProgress: 4, todo: 5 },
-    { name: "T5", completed: 14, inProgress: 6, todo: 7 },
-    { name: "T6", completed: 20, inProgress: 3, todo: 4 },
-    { name: "T7", completed: 10, inProgress: 2, todo: 3 },
-    { name: "CN", completed: 8, inProgress: 1, todo: 2 },
-  ]
+  // Handle date range change
+  const handleDateRangeChange = (range: string) => {
+    setDateFilter(range)
+    updateDateRange(range as any)
+  }
 
+  // Calculate task completion data from real tasks
+  const taskCompletionData = (() => {
+    const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+    const today = new Date()
+    const data = []
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      const dayIndex = date.getDay()
+      
+      const dayTasks = tasks.filter(t => {
+        const taskDate = new Date(t.createdAt)
+        return taskDate.toDateString() === date.toDateString()
+      })
+      
+      data.push({
+        name: days[dayIndex],
+        completed: dayTasks.filter(t => t.status === 'done').length,
+        inProgress: dayTasks.filter(t => t.status === 'in-progress').length,
+        todo: dayTasks.filter(t => t.status === 'todo').length,
+      })
+    }
+    
+    return data
+  })()
+
+  // Calculate project progress data from real projects
   const projectProgressData = [
-    { name: "Đang thực hiện", value: 5, color: "hsl(221, 83%, 53%)" },
-    { name: "Hoàn thành", value: 12, color: "hsl(142, 76%, 36%)" },
-    { name: "Tạm dừng", value: 2, color: "hsl(48, 96%, 53%)" },
-    { name: "Đã hủy", value: 1, color: "hsl(0, 84%, 60%)" },
+    { name: "Đang thực hiện", value: projects.filter(p => p.status === "active").length, color: "hsl(221, 83%, 53%)" },
+    { name: "Hoàn thành", value: projects.filter(p => p.status === "completed").length, color: "hsl(142, 76%, 36%)" },
+    { name: "Tạm dừng", value: projects.filter(p => p.status === "on-hold").length, color: "hsl(48, 96%, 53%)" },
+    { name: "Đã hủy", value: projects.filter(p => p.status === "archived").length, color: "hsl(0, 84%, 60%)" },
   ]
 
-  const productivityData = [
-    { date: "20/11", tasksCompleted: 12, hoursWorked: 8 },
-    { date: "21/11", tasksCompleted: 15, hoursWorked: 9 },
-    { date: "22/11", tasksCompleted: 18, hoursWorked: 10 },
-    { date: "23/11", tasksCompleted: 14, hoursWorked: 7 },
-    { date: "24/11", tasksCompleted: 20, hoursWorked: 11 },
-    { date: "25/11", tasksCompleted: 16, hoursWorked: 8 },
-    { date: "26/11", tasksCompleted: 19, hoursWorked: 9 },
-  ]
+  // Calculate productivity data from real tasks
+  const productivityData = (() => {
+    const data = []
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      
+      const dayTasks = tasks.filter(t => {
+        const taskDate = new Date(t.updatedAt || t.createdAt)
+        return taskDate.toDateString() === date.toDateString()
+      })
+      
+      data.push({
+        date: format(date, 'dd/MM'),
+        tasksCompleted: dayTasks.filter(t => t.status === 'done').length,
+        hoursWorked: dayTasks.length * 2, // Estimate 2 hours per task
+      })
+    }
+    
+    return data
+  })()
 
   const getInitials = (name: string) => {
     return name
@@ -102,10 +148,10 @@ export default function DashboardPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => updateDateRange("today")}>Hôm nay</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => updateDateRange("week")}>Tuần này</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => updateDateRange("month")}>Tháng này</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => updateDateRange("year")}>Năm nay</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateRangeChange("today")}>Hôm nay</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateRangeChange("week")}>Tuần này</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateRangeChange("month")}>Tháng này</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDateRangeChange("year")}>Năm nay</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -137,35 +183,35 @@ export default function DashboardPage() {
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatsCard
-              title="Công việc hôm nay"
-              value={String(stats?.thisWeekCompleted || 0)}
-              icon={Clock}
-              trend={{ value: 15, isPositive: true }}
-              description="so với hôm qua"
+              title="Tổng công việc"
+              value={String(stats?.tasks?.total || 0)}
+              icon={Target}
+              trend={{ value: stats?.tasks?.completed || 0, isPositive: true }}
+              description={`${stats?.tasks?.completed || 0} hoàn thành`}
               delay={0}
             />
             <StatsCard
-              title="Hoàn thành tuần này"
-              value={String(stats?.thisWeekCompleted || 0)}
-              icon={CheckCircle2}
-              trend={{ value: 12, isPositive: true }}
-              description="so với tuần trước"
+              title="Công việc đang làm"
+              value={String(stats?.tasks?.pending || 0)}
+              icon={Clock}
+              trend={{ value: stats?.tasks?.overdue || 0, isPositive: false }}
+              description={`${stats?.tasks?.overdue || 0} quá hạn`}
               delay={0.1}
             />
             <StatsCard
               title="Dự án đang làm"
-              value={String(stats?.activeProjects || 0)}
+              value={String(stats?.projects?.active || 0)}
               icon={FolderOpen}
-              trend={{ value: 5, isPositive: false }}
-              description="so với tháng trước"
+              trend={{ value: stats?.projects?.archived || 0, isPositive: true }}
+              description={`${stats?.projects?.archived || 0} đã lưu trữ`}
               delay={0.2}
             />
             <StatsCard
               title="Thành viên hoạt động"
-              value={String(stats?.teamMembers || 0)}
+              value={String(stats?.users?.active || 0)}
               icon={Users}
-              trend={{ value: 8, isPositive: true }}
-              description="tăng trưởng"
+              trend={{ value: stats?.users?.inactive || 0, isPositive: false }}
+              description={`${stats?.users?.inactive || 0} không hoạt động`}
               delay={0.3}
             />
           </div>
@@ -240,8 +286,8 @@ export default function DashboardPage() {
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {recentProjects.map((project, index) => {
-            const completedTasks = mockTasks.filter((t) => t.projectId === project.id && t.status === "done").length
-            const totalTasks = mockTasks.filter((t) => t.projectId === project.id).length
+            const completedTasks = tasks.filter((t) => t.projectId === project.id && t.status === "done").length
+            const totalTasks = tasks.filter((t) => t.projectId === project.id).length
             const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
 
             return (
@@ -257,7 +303,7 @@ export default function DashboardPage() {
                       <div className="flex items-start justify-between mb-4">
                         <div
                           className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
-                          style={{ backgroundColor: project.color }}
+                          style={{ backgroundColor: project.color || "#3b82f6" }}
                         >
                           {project.name.charAt(0)}
                         </div>

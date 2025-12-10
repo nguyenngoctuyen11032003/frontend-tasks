@@ -1,9 +1,10 @@
-import { useEffect, useCallback } from "react"
+import { useEffect, useCallback, useRef } from "react"
 import { useAdminStore } from "@/stores/admin-store"
 import { DateRange } from "@/types"
 
 export const useDashboard = (initialDateRange: DateRange = "month") => {
   const store = useAdminStore()
+  const hasFetchedRef = useRef(false)
 
   // Fetch all dashboard data
   const fetchAllData = useCallback(
@@ -26,26 +27,23 @@ export const useDashboard = (initialDateRange: DateRange = "month") => {
         store.setIsLoading(false)
       }
     },
-    [store, initialDateRange]
+    [initialDateRange, store]
   )
 
-  // Initial fetch on mount
+  // Initial fetch on mount only
   useEffect(() => {
-    fetchAllData(store.selectedDateRange || initialDateRange)
-  }, [])
-
-  // Refetch when date range changes
-  useEffect(() => {
-    if (store.selectedDateRange !== initialDateRange) {
-      fetchAllData(store.selectedDateRange)
+    if (!hasFetchedRef.current) {
+      fetchAllData(store.selectedDateRange || initialDateRange)
+      hasFetchedRef.current = true
     }
-  }, [store.selectedDateRange, initialDateRange, fetchAllData])
+  }, [])
 
   const updateDateRange = useCallback(
     (newRange: DateRange) => {
       store.setDateRange(newRange)
+      fetchAllData(newRange)
     },
-    [store]
+    [store, fetchAllData]
   )
 
   const refetch = useCallback(() => {
@@ -69,3 +67,4 @@ export const useDashboard = (initialDateRange: DateRange = "month") => {
     refetch,
   }
 }
+

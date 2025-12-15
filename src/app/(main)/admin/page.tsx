@@ -1229,9 +1229,9 @@ export default function AdminPage() {
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Bộ nhớ sử dụng</p>
                     <p className="font-medium">
-                      {typeof systemHealth.server.memoryUsage === 'object'
-                        ? `${systemHealth.server.memoryUsage.heapUsed} MB`
-                        : `${systemHealth.server.memoryUsage} MB`}
+                      {typeof systemHealth?.server?.memoryUsage === 'object' && systemHealth.server.memoryUsage
+                        ? `${(systemHealth.server.memoryUsage as any).heapUsed || 0} MB`
+                        : `${systemHealth?.server?.memoryUsage || 0} MB`}
                     </p>
                   </div>
                   <div className="space-y-1">

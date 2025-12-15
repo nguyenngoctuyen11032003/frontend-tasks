@@ -82,7 +82,7 @@ export default function DashboardPage() {
       data.push({
         name: days[dayIndex],
         completed: dayTasks.filter(t => t.status === 'done').length,
-        inProgress: dayTasks.filter(t => t.status === 'in-progress').length,
+        inProgress: dayTasks.filter(t => t.status === 'in_progress').length,
         todo: dayTasks.filter(t => t.status === 'todo').length,
       })
     }

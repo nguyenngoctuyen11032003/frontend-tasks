@@ -1,7 +1,7 @@
 import { useAuthStore } from "@/stores/auth-store"
 import type { ActivityLog } from "@/types"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
 // ==================== Helper Functions ====================
 const getAuthToken = () => {

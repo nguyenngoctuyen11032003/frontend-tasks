@@ -7,6 +7,7 @@ import {
   type QueryNoteParams,
   type NoteStatistics,
 } from "@/services/notes.service"
+import { normalizeNote, normalizeNotes } from "@/lib/note-utils"
 import type { Note } from "@/types"
 
 interface NoteFilters {
@@ -138,7 +139,7 @@ export const useNotesStore = create<NotesStore>()(
             const response = await notesService.getNotes(queryParams)
 
             set({
-              notes: response.items,
+              notes: normalizeNotes(response.items),
               pagination: {
                 page: response.page,
                 limit: response.limit,
@@ -158,7 +159,8 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ loadingNoteId: id })
             const note = await notesService.getNote(id)
-            set({ selectedNote: note, loadingNoteId: null })
+            const normalizedNote = normalizeNote(note)
+            set({ selectedNote: normalizedNote, loadingNoteId: null })
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to fetch note"
@@ -171,15 +173,16 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ createLoading: true, error: null })
             const note = await notesService.createNote(payload)
+            const normalizedNote = normalizeNote(note)
 
             // Add to notes list
             const state = get()
             set({
-              notes: [note, ...state.notes],
+              notes: [normalizedNote, ...state.notes],
               createLoading: false,
             })
 
-            return note
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to create note"
@@ -192,22 +195,23 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ updateLoading: true, loadingNoteId: id, error: null })
             const updatedNote = await notesService.updateNote(id, payload)
+            const normalizedNote = normalizeNote(updatedNote)
 
             // Update in notes list and selected note
             set((state) => {
               const updatedNotes = state.notes.map((n) =>
-                n.id === id ? updatedNote : n
+                n.id === id ? normalizedNote : n
               )
               return {
                 notes: updatedNotes,
                 selectedNote:
-                  state.selectedNote?.id === id ? updatedNote : state.selectedNote,
+                  state.selectedNote?.id === id ? normalizedNote : state.selectedNote,
                 updateLoading: false,
                 loadingNoteId: null,
               }
             })
 
-            return updatedNote
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to update note"
@@ -295,20 +299,21 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ loadingNoteId: id, error: null })
             const updatedNote = await notesService.shareNote(id, userIds)
+            const normalizedNote = normalizeNote(updatedNote)
 
             set((state) => {
               const updatedNotes = state.notes.map((n) =>
-                n.id === id ? updatedNote : n
+                n.id === id ? normalizedNote : n
               )
               return {
                 notes: updatedNotes,
                 selectedNote:
-                  state.selectedNote?.id === id ? updatedNote : state.selectedNote,
+                  state.selectedNote?.id === id ? normalizedNote : state.selectedNote,
                 loadingNoteId: null,
               }
             })
 
-            return updatedNote
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to share note"
@@ -321,20 +326,21 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ loadingNoteId: id, error: null })
             const updatedNote = await notesService.unshareNote(id, userId)
+            const normalizedNote = normalizeNote(updatedNote)
 
             set((state) => {
               const updatedNotes = state.notes.map((n) =>
-                n.id === id ? updatedNote : n
+                n.id === id ? normalizedNote : n
               )
               return {
                 notes: updatedNotes,
                 selectedNote:
-                  state.selectedNote?.id === id ? updatedNote : state.selectedNote,
+                  state.selectedNote?.id === id ? normalizedNote : state.selectedNote,
                 loadingNoteId: null,
               }
             })
 
-            return updatedNote
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to unshare note"
@@ -348,22 +354,23 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ loadingNoteId: noteId, error: null })
             const updatedNote = await notesService.addTag(noteId, tagId)
+            const normalizedNote = normalizeNote(updatedNote)
 
             set((state) => {
               const updatedNotes = state.notes.map((n) =>
-                n.id === noteId ? updatedNote : n
+                n.id === noteId ? normalizedNote : n
               )
               return {
                 notes: updatedNotes,
                 selectedNote:
                   state.selectedNote?.id === noteId
-                    ? updatedNote
+                    ? normalizedNote
                     : state.selectedNote,
                 loadingNoteId: null,
               }
             })
 
-            return updatedNote
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to add tag"
@@ -376,22 +383,23 @@ export const useNotesStore = create<NotesStore>()(
           try {
             set({ loadingNoteId: noteId, error: null })
             const updatedNote = await notesService.removeTag(noteId, tagId)
+            const normalizedNote = normalizeNote(updatedNote)
 
             set((state) => {
               const updatedNotes = state.notes.map((n) =>
-                n.id === noteId ? updatedNote : n
+                n.id === noteId ? normalizedNote : n
               )
               return {
                 notes: updatedNotes,
                 selectedNote:
                   state.selectedNote?.id === noteId
-                    ? updatedNote
+                    ? normalizedNote
                     : state.selectedNote,
                 loadingNoteId: null,
               }
             })
 
-            return updatedNote
+            return normalizedNote
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Failed to remove tag"

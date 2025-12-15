@@ -329,6 +329,7 @@ export interface Note {
   createdBy: User
   projectId?: string
   isPinned?: boolean
+  todos?: Array<{ id: string; text: string; completed: boolean }>
   createdAt: string
   updatedAt: string
 }

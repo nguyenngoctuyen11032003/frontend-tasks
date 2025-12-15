@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { NoteManager } from "@/lib/notes"
+import { useTagsStore } from "@/stores/tags-store"
 import type { Note, Project } from "@/types"
+import type { Tag as TagType } from "@/types"
 
 interface NoteListProps {
   notes: Note[]
@@ -41,6 +43,7 @@ export function NoteList({
   onShare,
   className,
 }: NoteListProps) {
+  const tagsStore = useTagsStore()
   const getProjectColor = (projectId?: string) => {
     const project = projects.find((p) => p.id === projectId)
     return project?.color || "#64748b"
@@ -188,11 +191,42 @@ export function NoteList({
             {note.tags && note.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-3">
                 {note.tags.slice(0, 3).map((tag) => {
-                  const tagName = typeof tag === 'string' ? tag : tag.name
-                  const tagId = typeof tag === 'string' ? tag : tag.id
+                  let tagName = ""
+                  let tagColor = "#64748b"
+                  let tagId = ""
+                  
+                  // Handle both string IDs and tag objects
+                  if (typeof tag === 'string') {
+                    // Try to resolve the tag ID from store
+                    const resolvedTag = tagsStore.getTagById(tag)
+                    if (resolvedTag) {
+                      tagName = resolvedTag.name
+                      tagColor = resolvedTag.color || "#64748b"
+                      tagId = resolvedTag.id
+                    } else {
+                      // Fallback: show the ID if tag not found in store
+                      tagName = tag.substring(0, 8) + "..."
+                      tagId = tag
+                    }
+                  } else {
+                    tagName = tag.name
+                    tagColor = tag.color || "#64748b"
+                    tagId = tag.id
+                  }
+                  
                   return (
-                    <Badge key={tagId} variant="secondary" className="text-xs">
-                      #{tagName}
+                    <Badge 
+                      key={tagId} 
+                      variant="secondary" 
+                      className="text-xs"
+                      title={tagName}
+                      style={{
+                        backgroundColor: `${tagColor}20`,
+                        color: tagColor,
+                        border: `1px solid ${tagColor}40`
+                      }}
+                    >
+                      {tagName}
                     </Badge>
                   )
                 })}

@@ -8,12 +8,14 @@ export interface CreateNotePayload {
   content: string
   projectId?: string
   sharedWithUserIds?: string[]
+  todos?: Array<{ id: string; text: string; completed: boolean }>
 }
 
 export interface UpdateNotePayload {
   title?: string
   content?: string
   projectId?: string
+  todos?: Array<{ id: string; text: string; completed: boolean }>
 }
 
 export interface QueryNoteParams {
@@ -152,10 +154,16 @@ class NotesService {
 
   async updateNote(id: string, payload: UpdateNotePayload): Promise<Note> {
     try {
+      // Convert todos array to JSON string for backend
+      const body = {
+        ...payload,
+        todos: payload.todos ? JSON.stringify(payload.todos) : undefined,
+      }
+      
       const response = await fetch(`${API_BASE_URL}/notes/${id}`, {
         method: "PATCH",
         headers: this.getHeaders(),
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       })
 
       if (!response.ok) {

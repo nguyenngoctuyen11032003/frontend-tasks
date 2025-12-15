@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect } from "react"
 import { useNotesStore } from "@/stores/notes-store"
 import { useProjectsStore } from "@/stores/projects-store"
+import { useTagsStore } from "@/stores/tags-store"
 import { AnimatePresence } from "framer-motion"
 import {
   Plus,
@@ -52,6 +53,7 @@ interface TodoItem {
 export default function NotesPage() {
   const notesStore = useNotesStore()
   const projectsStore = useProjectsStore()
+  const tagsStore = useTagsStore()
   
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
@@ -62,20 +64,32 @@ export default function NotesPage() {
   const [newTodoText, setNewTodoText] = useState("")
   const [showPinnedOnly, setShowPinnedOnly] = useState(false)
 
-  // Fetch notes on mount and reset filters
+  // Fetch tags first, then notes and projects
   useEffect(() => {
-    notesStore.clearFilters()
-    notesStore.fetchNotes().catch((error) => {
-      toast.error("Không thể tải ghi chú")
-      console.error("Failed to fetch notes:", error)
-    })
-  }, [])
+    const loadData = async () => {
+      try {
+        // Load tags first so they're available for resolving tag IDs
+        await tagsStore.fetchTags()
+      } catch (error) {
+        console.error("Failed to fetch tags:", error)
+      }
+      
+      try {
+        notesStore.clearFilters()
+        await notesStore.fetchNotes()
+      } catch (error) {
+        toast.error("Không thể tải ghi chú")
+        console.error("Failed to fetch notes:", error)
+      }
 
-  // Fetch projects on mount
-  useEffect(() => {
-    projectsStore.fetchProjects().catch((error) => {
-      console.error("Failed to fetch projects:", error)
-    })
+      try {
+        await projectsStore.fetchProjects()
+      } catch (error) {
+        console.error("Failed to fetch projects:", error)
+      }
+    }
+
+    loadData()
   }, [])
 
   // Filter and sort notes
@@ -154,6 +168,17 @@ export default function NotesPage() {
           }
         }
         
+        // Save todos if any
+        if (todos.length > 0) {
+          try {
+            await notesStore.updateNote(createdNote.id, {
+              todos,
+            })
+          } catch (error) {
+            console.error("Failed to save todos:", error)
+          }
+        }
+        
         toast.success("Đã tạo ghi chú mới")
       } else if (selectedNote) {
         // Update note without tags
@@ -161,6 +186,7 @@ export default function NotesPage() {
           title: noteData.title,
           content: noteData.content,
           projectId: noteData.projectId,
+          todos,
         })
         
         // Handle tag changes
@@ -251,6 +277,19 @@ export default function NotesPage() {
     // TODO: Implement share dialog with user selection
     toast.info("Tính năng chia sẻ sẽ được triển khai")
   }
+
+  // Reset todos when note selection changes
+  useEffect(() => {
+    if (selectedNote && selectedNote.id) {
+      // Parse todos from note content if available (stored in note metadata)
+      const noteTodos = (selectedNote as any).todos || []
+      setTodos(noteTodos)
+      setActiveTab("note")
+    } else {
+      setTodos([])
+      setNewTodoText("")
+    }
+  }, [selectedNote?.id])
 
   const handleAddTodo = () => {
     if (!newTodoText.trim()) return
@@ -509,6 +548,9 @@ export default function NotesPage() {
           if (!open) {
             setSelectedNote(null)
             setEditorMode("view")
+            setTodos([])
+            setNewTodoText("")
+            setActiveTab("note")
           }
         }}
       >
@@ -571,9 +613,18 @@ export default function NotesPage() {
                         {selectedNote.tags.map((tag) => {
                           const tagName = typeof tag === 'string' ? tag : tag.name
                           const tagId = typeof tag === 'string' ? tag : tag.id
+                          const tagColor = typeof tag === 'string' ? '#64748b' : (tag.color || '#64748b')
                           return (
-                            <Badge key={tagId} variant="secondary">
-                              #{tagName}
+                            <Badge 
+                              key={tagId} 
+                              variant="secondary"
+                              style={{
+                                backgroundColor: `${tagColor}20`,
+                                color: tagColor,
+                                border: `1px solid ${tagColor}40`
+                              }}
+                            >
+                              {tagName}
                             </Badge>
                           )
                         })}

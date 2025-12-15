@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast } from "sonner"
 import { useTasksStore } from "@/stores/tasks-store"
+import { formatDateTime } from "@/lib/utils"
 import type { Task, TaskReminder } from "@/types"
 
 interface TaskReminderModalProps {
@@ -103,16 +104,6 @@ export function TaskReminderModal({ open, onOpenChange, task }: TaskReminderModa
   const handleSave = () => {
     toast.success("Đã lưu các lời nhắc")
     onOpenChange(false)
-  }
-
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
   }
 
   return (

@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
+import { cn, formatDateTime } from "@/lib/utils"
 import { NoteManager } from "@/lib/notes"
 import { useTagsStore } from "@/stores/tags-store"
 import type { Note, Project } from "@/types"
@@ -53,16 +53,6 @@ export function NoteList({
     if (!projectId) return "Personal"
     const project = projects.find((p) => p.id === projectId)
     return project?.name || "Personal"
-  }
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
   }
 
   if (notes.length === 0) {
@@ -242,7 +232,7 @@ export function NoteList({
             <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
               <div className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {formatDate(note.updatedAt)}
+                {formatDateTime(note.updatedAt)}
               </div>
               {readingTime > 0 && (
                 <div className="flex items-center gap-1">

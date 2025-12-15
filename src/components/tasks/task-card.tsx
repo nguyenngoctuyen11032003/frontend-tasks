@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Calendar, MessageSquare, Paperclip } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PriorityBadge } from "@/components/ui/status-badge"
-import { cn } from "@/lib/utils"
+import { cn, formatRelativeDate } from "@/lib/utils"
 import type { Task } from "@/types"
 
 interface TaskCardProps {
@@ -16,18 +16,6 @@ interface TaskCardProps {
 }
 
 export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, className }: TaskCardProps) {
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-
-    if (diffDays < 0) return `Quá hạn ${Math.abs(diffDays)} ngày`
-    if (diffDays === 0) return "Hôm nay"
-    if (diffDays === 1) return "Ngày mai"
-    if (diffDays <= 7) return `Còn ${diffDays} ngày`
-    return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
-  }
-
   const isOverdue = useMemo(
     () => new Date(task.dueDate) < new Date() && task.status !== "done",
     [task.dueDate, task.status]
@@ -146,7 +134,7 @@ export const TaskCard = memo(function TaskCard({ task, onClick, isDragging, clas
           )}
           <span className={cn("flex items-center gap-1", isOverdue && "text-destructive")}>
             <Calendar className="h-3.5 w-3.5" />
-            {formatDate(task.dueDate)}
+            {formatRelativeDate(task.dueDate)}
           </span>
         </div>
       </div>

@@ -6,7 +6,7 @@ import { Check, CheckCheck, File, Download, ImageIcon as ImageIconLucide } from 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { mockRoleDefinitions } from "@/mocks/data"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 import type { Message, User } from "@/types"
 
 interface MessageListProps {
@@ -42,14 +42,6 @@ export function MessageList({
     const primaryRole = user.roles[0]
     const roleDefinition = mockRoleDefinitions.find(r => r.name === primaryRole)
     return roleDefinition?.color
-  }
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
   }
 
   const formatDate = (date: string) => {

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useUIStore } from "@/stores/ui-store"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { cn } from "@/lib/utils"
+import { cn, formatTime } from "@/lib/utils"
 
 interface Message {
   id: string
@@ -100,13 +100,6 @@ export function FloatingChat() {
         timestamp: new Date(),
       },
     ])
-  }
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
   }
 
   return (

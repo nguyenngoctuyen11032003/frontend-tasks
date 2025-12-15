@@ -38,7 +38,7 @@ import { PriorityBadge } from "@/components/ui/status-badge"
 import { TaskReminderModal } from "@/components/tasks/task-reminder-modal"
 import { FileUploadDialog } from "@/components/upload"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { cn } from "@/lib/utils"
+import { cn, formatDate, formatDateTime } from "@/lib/utils"
 import type { Task, User } from "@/types"
 import { toast } from "sonner"
 import { RichEditor } from "@/components/editor/rich-editor"
@@ -203,23 +203,6 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
       .slice(0, 2)
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  }
-
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
 
   const displayChecklist = isEditingDescription ? tempChecklistItems : checklistItems
   const completedChecklist = displayChecklist.filter((item) => item.completed).length
@@ -871,16 +854,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                   )}
 
                   <div className="space-y-2">
-                    {task.assignees.map((assignee) => (
-                      <div key={assignee.id} className="flex items-center justify-between group">
+                    {task.assignees?.filter(a => a).map((assignee) => (
+                      <div key={assignee?.id} className="flex items-center justify-between group">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={assignee.avatarUrl || "/placeholder.svg"} />
-                            <AvatarFallback>{getInitials(assignee.name)}</AvatarFallback>
+                            <AvatarImage src={assignee?.avatarUrl || "/placeholder.svg"} />
+                            <AvatarFallback>{getInitials(assignee?.name)}</AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="text-sm font-medium">{assignee.name}</p>
-                            <p className="text-xs text-muted-foreground">{assignee.role}</p>
+                            <p className="text-sm font-medium">{assignee?.name || "Unknown User"}</p>
+                            <p className="text-xs text-muted-foreground">{assignee?.role || "Member"}</p>
                           </div>
                         </div>
                         <Button 
@@ -958,13 +941,13 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                       Tags
                     </h4>
                     <div className="flex flex-wrap gap-1">
-                      {task.tags.map((tag) => (
+                      {task.tags?.filter(t => t).map((tag) => (
                         <Badge
-                          key={tag.id}
+                          key={tag?.id}
                           variant="outline"
                           style={{
-                            borderColor: tag.color,
-                            color: tag.color,
+                            borderColor: tag?.color,
+                            color: tag?.color,
                           }}
                         >
                           {tag.name}
@@ -1014,16 +997,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onEdit, onDelete }:
                   <div>
                     <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                       <Paperclip className="h-4 w-4" />
-                      Tệp đính kèm ({task.attachments.length})
+                      Tệp đính kèm ({task.attachments?.length || 0})
                     </h4>
                     <div className="space-y-1">
-                      {task.attachments.map((attachment) => (
+                      {task.attachments?.filter(a => a).map((attachment) => (
                         <div
-                          key={attachment.id}
+                          key={attachment?.id}
                           className="flex items-center gap-2 p-2 rounded-lg border hover:bg-accent/50 cursor-pointer"
                         >
                           <Paperclip className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm truncate">{attachment.name}</span>
+                          <span className="text-sm truncate">{attachment?.name || "File"}</span>
                         </div>
                       ))}
                     </div>

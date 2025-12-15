@@ -304,7 +304,9 @@ export class NoteManager {
   /**
    * Format note content preview
    */
-  static getContentPreview(content: string, maxLength: number = 200): string {
+  static getContentPreview(content: string | undefined, maxLength: number = 200): string {
+    // Handle undefined or empty content
+    if (!content) return ""
     // Remove HTML tags
     const text = content.replace(/<[^>]*>/g, "")
     // Remove extra whitespace
@@ -327,7 +329,8 @@ export class NoteManager {
   /**
    * Get note word count
    */
-  static getWordCount(content: string): number {
+  static getWordCount(content: string | undefined): number {
+    if (!content) return 0
     const text = content.replace(/<[^>]*>/g, "")
     const words = text.trim().split(/\s+/)
     return words.filter((word) => word.length > 0).length
@@ -336,7 +339,8 @@ export class NoteManager {
   /**
    * Get note reading time (in minutes)
    */
-  static getReadingTime(content: string): number {
+  static getReadingTime(content: string | undefined): number {
+    if (!content) return 0
     const wordCount = this.getWordCount(content)
     const wordsPerMinute = 200 // Average reading speed
     return Math.ceil(wordCount / wordsPerMinute)

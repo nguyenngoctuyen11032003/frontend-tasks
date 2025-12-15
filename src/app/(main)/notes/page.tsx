@@ -281,9 +281,21 @@ export default function NotesPage() {
   // Reset todos when note selection changes
   useEffect(() => {
     if (selectedNote && selectedNote.id) {
-      // Parse todos from note content if available (stored in note metadata)
-      const noteTodos = (selectedNote as any).todos || []
-      setTodos(noteTodos)
+      // Parse todos from note - handle both string and array formats
+      let noteTodos: TodoItem[] = []
+      if (selectedNote.todos) {
+        if (typeof selectedNote.todos === 'string') {
+          try {
+            noteTodos = JSON.parse(selectedNote.todos)
+          } catch (e) {
+            console.error('Failed to parse todos:', e)
+            noteTodos = []
+          }
+        } else if (Array.isArray(selectedNote.todos)) {
+          noteTodos = selectedNote.todos
+        }
+      }
+      setTodos(Array.isArray(noteTodos) ? noteTodos : [])
       setActiveTab("note")
     } else {
       setTodos([])
@@ -291,23 +303,70 @@ export default function NotesPage() {
     }
   }, [selectedNote?.id])
 
-  const handleAddTodo = () => {
+  const handleAddTodo = async () => {
     if (!newTodoText.trim()) return
+    if (!selectedNote) return
+
     const newTodo: TodoItem = {
       id: `todo-${Date.now()}`,
       text: newTodoText,
       completed: false,
     }
-    setTodos([...todos, newTodo])
+    const updatedTodos = [...todos, newTodo]
+    setTodos(updatedTodos)
     setNewTodoText("")
+
+    // Auto-save to database
+    try {
+      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+        todos: updatedTodos,
+      })
+      // Update selected note to reflect changes
+      setSelectedNote(updatedNote)
+    } catch (error) {
+      console.error("Failed to save todo:", error)
+      toast.error("Không thể lưu công việc")
+    }
   }
 
-  const handleToggleTodo = (id: string) => {
-    setTodos(todos.map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)))
+  const handleToggleTodo = async (id: string) => {
+    if (!selectedNote) return
+
+    const updatedTodos = todos.map((todo) => 
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    )
+    setTodos(updatedTodos)
+
+    // Auto-save to database
+    try {
+      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+        todos: updatedTodos,
+      })
+      // Update selected note to reflect changes
+      setSelectedNote(updatedNote)
+    } catch (error) {
+      console.error("Failed to save todo:", error)
+      toast.error("Không thể cập nhật công việc")
+    }
   }
 
-  const handleDeleteTodo = (id: string) => {
-    setTodos(todos.filter((todo) => todo.id !== id))
+  const handleDeleteTodo = async (id: string) => {
+    if (!selectedNote) return
+
+    const updatedTodos = todos.filter((todo) => todo.id !== id)
+    setTodos(updatedTodos)
+
+    // Auto-save to database
+    try {
+      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+        todos: updatedTodos,
+      })
+      // Update selected note to reflect changes
+      setSelectedNote(updatedNote)
+    } catch (error) {
+      console.error("Failed to delete todo:", error)
+      toast.error("Không thể xóa công việc")
+    }
   }
 
   const hasFilters = !!(notesStore.searchQuery || projectFilter !== "all" || showPinnedOnly)
@@ -600,7 +659,7 @@ export default function NotesPage() {
                     </TabsTrigger>
                     <TabsTrigger value="todo">
                       <CheckSquare className="mr-2 h-4 w-4" />
-                      Todo ({todos.filter((t) => t.completed).length}/{todos.length})
+                      Todo ({Array.isArray(todos) ? todos.filter((t) => t.completed).length : 0}/{Array.isArray(todos) ? todos.length : 0})
                     </TabsTrigger>
                   </TabsList>
 
@@ -690,7 +749,7 @@ export default function NotesPage() {
                     </div>
 
                     {/* Progress */}
-                    {todos.length > 0 && (
+                    {Array.isArray(todos) && todos.length > 0 && (
                       <div className="pt-4 border-t">
                         <div className="flex justify-between text-sm mb-2">
                           <span className="text-muted-foreground">Tiến độ</span>
@@ -702,7 +761,7 @@ export default function NotesPage() {
                           <div
                             className="h-full bg-primary transition-all"
                             style={{
-                              width: `${todos.length > 0
+                              width: `${Array.isArray(todos) && todos.length > 0
                                 ? (todos.filter((t) => t.completed).length / todos.length) * 100
                                 : 0}%`,
                             }}

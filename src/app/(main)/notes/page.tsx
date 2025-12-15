@@ -51,12 +51,31 @@ interface TodoItem {
 }
 
 export default function NotesPage() {
-  const notesStore = useNotesStore()
+  // Destructure notes store to ensure proper reactivity
+  const { 
+    notes,
+    selectedNote,
+    searchQuery,
+    loading,
+    loadingNoteId,
+    fetchNotes, 
+    createNote, 
+    updateNote, 
+    deleteNote, 
+    duplicateNote, 
+    togglePin, 
+    shareNote, 
+    unshareNote,
+    addTag,
+    removeTag,
+    setSearchQuery,
+    setSelectedNote,
+    clearFilters
+  } = useNotesStore()
   const projectsStore = useProjectsStore()
   const tagsStore = useTagsStore()
   
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [editorMode, setEditorMode] = useState<EditorMode>("view")
   const [projectFilter, setProjectFilter] = useState<string>("all")
   const [activeTab, setActiveTab] = useState<NoteTab>("note")
@@ -75,8 +94,8 @@ export default function NotesPage() {
       }
       
       try {
-        notesStore.clearFilters()
-        await notesStore.fetchNotes()
+        clearFilters()
+        await fetchNotes()
       } catch (error) {
         toast.error("Không thể tải ghi chú")
         console.error("Failed to fetch notes:", error)
@@ -94,12 +113,12 @@ export default function NotesPage() {
 
   // Filter and sort notes
   const filteredNotes = useMemo(() => {
-    const notes = Array.isArray(notesStore.notes) ? notesStore.notes : []
-    let filtered = [...notes]
+    const notesList = Array.isArray(notes) ? notes : []
+    let filtered = [...notesList]
 
     // Apply search query
-    if (notesStore.searchQuery) {
-      const query = notesStore.searchQuery.toLowerCase()
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
         (n) =>
           n.title.toLowerCase().includes(query) ||
@@ -120,10 +139,11 @@ export default function NotesPage() {
     }
 
     return filtered
-  }, [notesStore.notes, notesStore.searchQuery, projectFilter, showPinnedOnly])
+  }, [notes, searchQuery, projectFilter, showPinnedOnly])
 
-  const pinnedNotes = filteredNotes.filter((n) => n.isPinned)
-  const unpinnedNotes = filteredNotes.filter((n) => !n.isPinned)
+  // Separate pinned and unpinned notes - memoized to prevent unnecessary recalculations
+  const pinnedNotes = useMemo(() => filteredNotes.filter((n) => n.isPinned), [filteredNotes])
+  const unpinnedNotes = useMemo(() => filteredNotes.filter((n) => !n.isPinned), [filteredNotes])
 
   const handleNoteClick = (note: Note) => {
     setSelectedNote(note)
@@ -146,7 +166,7 @@ export default function NotesPage() {
     try {
       if (editorMode === "create") {
         // Create note without tags
-        const createdNote = await notesStore.createNote({
+        const createdNote = await createNote({
           title: noteData.title!,
           content: noteData.content || "",
           projectId: noteData.projectId,
@@ -160,7 +180,7 @@ export default function NotesPage() {
         if (tagIds.length > 0) {
           try {
             for (const tagId of tagIds) {
-              await notesStore.addTag(createdNote.id, tagId)
+              await addTag(createdNote.id, tagId)
             }
           } catch (error) {
             console.error("Failed to add tags to note:", error)
@@ -171,7 +191,7 @@ export default function NotesPage() {
         // Save todos if any
         if (todos.length > 0) {
           try {
-            await notesStore.updateNote(createdNote.id, {
+            await updateNote(createdNote.id, {
               todos,
             })
           } catch (error) {
@@ -182,7 +202,7 @@ export default function NotesPage() {
         toast.success("Đã tạo ghi chú mới")
       } else if (selectedNote) {
         // Update note without tags
-        await notesStore.updateNote(selectedNote.id, {
+        await updateNote(selectedNote.id, {
           title: noteData.title,
           content: noteData.content,
           projectId: noteData.projectId,
@@ -202,7 +222,7 @@ export default function NotesPage() {
         for (const tagId of oldTagIds) {
           if (!newTagIds.includes(tagId)) {
             try {
-              await notesStore.removeTag(selectedNote.id, tagId)
+              await removeTag(selectedNote.id, tagId)
             } catch (error) {
               console.error("Failed to remove tag:", error)
             }
@@ -213,7 +233,7 @@ export default function NotesPage() {
         for (const tagId of newTagIds) {
           if (!oldTagIds.includes(tagId)) {
             try {
-              await notesStore.addTag(selectedNote.id, tagId)
+              await addTag(selectedNote.id, tagId)
             } catch (error) {
               console.error("Failed to add tag:", error)
             }
@@ -239,7 +259,7 @@ export default function NotesPage() {
 
   const handleDelete = async (note: Note) => {
     try {
-      await notesStore.deleteNote(note.id)
+      await deleteNote(note.id)
       toast.success("Đã xóa ghi chú")
       if (selectedNote?.id === note.id) {
         setSelectedNote(null)
@@ -253,7 +273,7 @@ export default function NotesPage() {
 
   const handleDuplicate = async (note: Note) => {
     try {
-      await notesStore.duplicateNote(note.id)
+      await duplicateNote(note.id)
       toast.success("Đã nhân bản ghi chú")
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
@@ -264,7 +284,7 @@ export default function NotesPage() {
 
   const handleTogglePin = async (note: Note) => {
     try {
-      await notesStore.togglePin(note.id)
+      await togglePin(note.id)
       toast.success(note.isPinned ? "Đã bỏ ghim" : "Đã ghim ghi chú")
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Lỗi không xác định"
@@ -318,7 +338,7 @@ export default function NotesPage() {
 
     // Auto-save to database
     try {
-      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+      const updatedNote = await updateNote(selectedNote.id, {
         todos: updatedTodos,
       })
       // Update selected note to reflect changes
@@ -339,7 +359,7 @@ export default function NotesPage() {
 
     // Auto-save to database
     try {
-      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+      const updatedNote = await updateNote(selectedNote.id, {
         todos: updatedTodos,
       })
       // Update selected note to reflect changes
@@ -358,7 +378,7 @@ export default function NotesPage() {
 
     // Auto-save to database
     try {
-      const updatedNote = await notesStore.updateNote(selectedNote.id, {
+      const updatedNote = await updateNote(selectedNote.id, {
         todos: updatedTodos,
       })
       // Update selected note to reflect changes
@@ -369,9 +389,8 @@ export default function NotesPage() {
     }
   }
 
-  const hasFilters = !!(notesStore.searchQuery || projectFilter !== "all" || showPinnedOnly)
+  const hasFilters = !!(searchQuery || projectFilter !== "all" || showPinnedOnly)
 
-  const notes = Array.isArray(notesStore.notes) ? notesStore.notes : []
   const stats = {
     total: notes.length,
     pinned: notes.filter((n) => n.isPinned).length,
@@ -388,7 +407,7 @@ export default function NotesPage() {
             {stats.total} ghi chú • {stats.pinned} đã ghim • {stats.shared} đã chia sẻ
           </p>
         </div>
-        <Button onClick={handleCreate} disabled={notesStore.loading}>
+        <Button onClick={handleCreate} disabled={loading}>
           <Plus className="mr-2 h-4 w-4" />
           Tạo ghi chú
         </Button>
@@ -405,8 +424,8 @@ export default function NotesPage() {
                   <Input
                     placeholder="Tìm kiếm ghi chú..."
                     className="pl-9"
-                    value={notesStore.searchQuery}
-                    onChange={(e) => notesStore.setSearchQuery(e.target.value)}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -468,11 +487,11 @@ export default function NotesPage() {
             {hasFilters && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">Bộ lọc:</span>
-                {notesStore.searchQuery && (
+                {searchQuery && (
                   <Badge variant="secondary" className="gap-1">
-                    Search: {notesStore.searchQuery}
+                    Search: {searchQuery}
                     <button
-                      onClick={() => notesStore.setSearchQuery("")}
+                      onClick={() => setSearchQuery("")}
                       className="hover:text-destructive"
                     >
                       <XIcon className="h-3 w-3" />
@@ -502,7 +521,7 @@ export default function NotesPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    notesStore.setSearchQuery("")
+                    setSearchQuery("")
                     setProjectFilter("all")
                     setShowPinnedOnly(false)
                   }}
@@ -516,14 +535,14 @@ export default function NotesPage() {
             {/* Stats */}
             <div className="text-sm text-muted-foreground">
               Hiển thị {filteredNotes.length} / {stats.total} ghi chú
-              {notesStore.loading && <span className="ml-2">đang tải...</span>}
+              {loading && <span className="ml-2">đang tải...</span>}
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Loading State */}
-      {notesStore.loading && filteredNotes.length === 0 && (
+      {loading && filteredNotes.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <p className="mt-2 text-muted-foreground">Đang tải ghi chú...</p>
@@ -531,7 +550,7 @@ export default function NotesPage() {
       )}
 
       {/* Notes */}
-      {!notesStore.loading && (
+      {!loading && (
         <>
           {!showPinnedOnly && pinnedNotes.length > 0 && (
             <div className="space-y-4">
@@ -591,7 +610,7 @@ export default function NotesPage() {
               hasFilters={hasFilters}
               onCreateNote={handleCreate}
               onClearFilters={() => {
-                notesStore.setSearchQuery("")
+                setSearchQuery("")
                 setProjectFilter("all")
                 setShowPinnedOnly(false)
               }}
@@ -778,7 +797,7 @@ export default function NotesPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleDuplicate(selectedNote)}
-                      disabled={notesStore.loadingNoteId === selectedNote.id}
+                      disabled={loadingNoteId === selectedNote.id}
                     >
                       Nhân bản
                     </Button>
@@ -786,7 +805,7 @@ export default function NotesPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleDelete(selectedNote)}
-                      disabled={notesStore.loadingNoteId === selectedNote.id}
+                      disabled={loadingNoteId === selectedNote.id}
                     >
                       Xóa
                     </Button>

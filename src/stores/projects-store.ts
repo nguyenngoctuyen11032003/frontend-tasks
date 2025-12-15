@@ -168,7 +168,16 @@ export const useProjectsStore = create<ProjectsStore>()(
             set({ createLoading: true, error: null })
             const project = await projectsService.createProject(payload)
 
-            // Refresh the entire projects list to ensure consistency
+            // Add the new project to the list immediately (optimistic update)
+            set((state) => ({
+              projects: [project, ...state.projects],
+              pagination: {
+                ...state.pagination,
+                total: state.pagination.total + 1,
+              },
+            }))
+            
+            // Then refresh to ensure we have the latest data from server
             await get().fetchProjects()
             
             set({ createLoading: false })

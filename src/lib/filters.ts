@@ -93,7 +93,7 @@ export class FilterManager {
     }
 
     // Filter by date range
-    if (filters.dateRange) {
+    if (filters.dateRange && (filters.dateRange.start || filters.dateRange.end)) {
       const { start, end } = filters.dateRange
       filtered = filtered.filter((task) => {
         const dueDate = new Date(task.dueDate)
@@ -150,7 +150,7 @@ export class FilterManager {
     }
 
     // Filter by date range
-    if (filters.dateRange) {
+    if (filters.dateRange && (filters.dateRange.start || filters.dateRange.end)) {
       const { start, end } = filters.dateRange
       filtered = filtered.filter((project) => {
         if (!project.deadline) return false

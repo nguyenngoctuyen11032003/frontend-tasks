@@ -323,6 +323,8 @@ export interface Note {
   id: string
   title: string
   content: string
+  // Backend returns string[] (tag IDs), frontend normalizer converts to Tag[] when needed
+  // Kept as union type for flexibility until backend fully supports Tag object responses
   tags: (Tag | string)[] | null
   isShared: boolean
   sharedWith: User[]

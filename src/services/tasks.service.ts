@@ -430,6 +430,35 @@ class TasksService {
   }
 
   // ==================== Comments Management ====================
+  async getTaskComments(taskId: string, params?: Partial<QueryTaskParams>): Promise<Comment[]> {
+    try {
+      const queryString = new URLSearchParams()
+      if (params?.page) queryString.append("page", params.page.toString())
+      if (params?.limit) queryString.append("limit", params.limit.toString())
+      if (params?.sortBy) queryString.append("sortBy", params.sortBy)
+      if (params?.sortOrder) queryString.append("sortOrder", params.sortOrder)
+
+      const url = `${API_BASE_URL}/tasks/${taskId}/comments${queryString.toString() ? `?${queryString.toString()}` : ""}`
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: this.getHeaders(),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        )
+      }
+
+      const data = await response.json()
+      return data.data || data
+    } catch (error) {
+      this.handleError(error)
+    }
+  }
+
   async addComment(
     taskId: string,
     payload: CreateCommentPayload

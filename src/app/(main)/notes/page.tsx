@@ -31,7 +31,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { mockProjects, mockUsers } from "@/mocks/data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import type { Note } from "@/types"
@@ -642,7 +641,7 @@ export default function NotesPage() {
                 <NoteEditor
                   note={editorMode === "edit" ? selectedNote! : undefined}
                   projects={projectsStore.projects}
-                  users={mockUsers}
+                  users={[]} // TODO: Load users from API/Store
                   onSave={handleSave}
                   onCancel={handleCancel}
                 />

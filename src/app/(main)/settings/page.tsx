@@ -39,7 +39,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { mockUsers } from "@/mocks/data"
 import { useTheme } from "next-themes"
 import { AvatarUploadModal } from "@/components/avatar-upload-modal"
 import { api } from "@/lib/api"

@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, useCallback } from "react"
 import { SearchEngine, type SearchResult, type SearchFilters, type SearchOptions } from "@/lib/search"
-import { mockTasks, mockProjects, mockUsers } from "@/mocks/data"
 
 interface SearchContextType {
   results: SearchResult[]
@@ -26,58 +25,74 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
   const [isSearching, setIsSearching] = useState(false)
   const [history, setHistory] = useState(SearchEngine.getHistory())
 
-  const search = useCallback((options: SearchOptions) => {
+  const search = useCallback(async (options: SearchOptions) => {
     setIsSearching(true)
     setQuery(options.query)
     if (options.filters) {
       setFilters(options.filters)
     }
 
-    // Simulate async search
-    setTimeout(() => {
-      let searchResults: SearchResult[] = []
+    try {
+      // Use real API search instead of mock data
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/search?q=${encodeURIComponent(options.query)}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth-storage') ? JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.token : ''}`,
+          'Content-Type': 'application/json',
+        },
+      })
 
-      // Search across different types
-      const types = options.filters?.types || ["all"]
-      
-      if (types.includes("all") || types.includes("task")) {
-        searchResults.push(...SearchEngine.searchTasks(mockTasks, options.query))
+      if (response.ok) {
+        const data = await response.json()
+        // Convert API response to SearchResult format
+        let searchResults: SearchResult[] = []
+        
+        if (data.tasks) {
+          searchResults.push(...data.tasks.map((task: any) => ({
+            id: task.id,
+            title: task.title,
+            type: 'task' as const,
+            description: task.description,
+            url: `/tasks/${task.id}`,
+            metadata: task
+          })))
+        }
+        
+        if (data.projects) {
+          searchResults.push(...data.projects.map((project: any) => ({
+            id: project.id,
+            title: project.name,
+            type: 'project' as const,
+            description: project.description,
+            url: `/projects/${project.id}`,
+            metadata: project
+          })))
+        }
+        
+        if (data.users) {
+          searchResults.push(...data.users.map((user: any) => ({
+            id: user.id,
+            title: user.name,
+            type: 'user' as const,
+            description: user.email,
+            url: `/team`,
+            metadata: user
+          })))
+        }
+
+        setResults(searchResults)
+        
+        // Add to history
+        if (options.query.trim()) {
+          SearchEngine.addToHistory(options.query, options.filters, searchResults.length)
+          setHistory(SearchEngine.getHistory())
+        }
       }
-
-      if (types.includes("all") || types.includes("project")) {
-        searchResults.push(...SearchEngine.searchProjects(mockProjects, options.query))
-      }
-
-      if (types.includes("all") || types.includes("user")) {
-        searchResults.push(...SearchEngine.searchUsers(mockUsers, options.query))
-      }
-
-      // Apply filters
-      if (options.filters) {
-        searchResults = SearchEngine.applyFilters(searchResults, options.filters)
-      }
-
-      // Sort results
-      searchResults = SearchEngine.sortResults(
-        searchResults,
-        options.sortBy || "relevance",
-        options.sortOrder || "desc"
-      )
-
-      // Apply pagination
-      const limit = options.limit || 50
-      const offset = options.offset || 0
-      searchResults = searchResults.slice(offset, offset + limit)
-
-      setResults(searchResults)
+    } catch (error) {
+      console.error('Search error:', error)
+      setResults([])
+    } finally {
       setIsSearching(false)
-
-      // Add to history
-      if (options.query.trim()) {
-        SearchEngine.addToHistory(options.query, options.filters, searchResults.length)
-        setHistory(SearchEngine.getHistory())
-      }
-    }, 300)
+    }
   }, [])
 
   const clearSearch = useCallback(() => {

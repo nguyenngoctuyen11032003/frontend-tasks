@@ -23,7 +23,6 @@ function AcceptInviteContent() {
   const token = searchParams.get("token")
 
   const [loading, setLoading] = useState(true)
-  const [verifying, setVerifying] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +37,6 @@ function AcceptInviteContent() {
   useEffect(() => {
     if (!token) {
       setError("Token lời mời không hợp lệ")
-      setVerifying(false)
       setLoading(false)
       return
     }
@@ -48,16 +46,14 @@ function AcceptInviteContent() {
 
   const verifyToken = async () => {
     try {
-      setVerifying(true)
       const inviteData = await api.verifyInviteToken(token!)
       setInviteInfo(inviteData)
       setError(null)
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || "Token không hợp lệ hoặc đã hết hạn"
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Token không hợp lệ hoặc đã hết hạn"
       setError(errorMessage)
       toast.error("Xác thực thất bại", { description: errorMessage })
     } finally {
-      setVerifying(false)
       setLoading(false)
     }
   }

@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware"
 import type { User, Permission, Role } from "@/types"
 import api from "@/lib/api"
 import socketClient from "@/lib/socket"
-import { mockRoleDefinitions } from "@/mocks/data"
 
 interface AuthStore {
   user: User | null
@@ -64,7 +63,7 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       setUser: (user: User) => {
-        set({ user })
+        set({ user, isAuthenticated: true })
       },
 
       setToken: (token: string) => {
@@ -78,18 +77,12 @@ export const useAuthStore = create<AuthStore>()(
 
         // Super admin has all permissions
         if (user.roles.includes("super_admin")) {
-          return Object.values(mockRoleDefinitions).flatMap((role) => role.permissions) as Permission[]
+          // Return all possible permissions
+          return user.permissions as Permission[]
         }
 
-        // Collect permissions from all roles
-        const rolePermissions = user.roles.flatMap((roleName) => {
-          const roleDef = mockRoleDefinitions.find((r) => r.name === roleName)
-          return roleDef?.permissions || []
-        })
-
-        // Combine with user's direct permissions
-        const allPermissions = [...new Set([...rolePermissions, ...user.permissions])]
-        return allPermissions as Permission[]
+        // Return user's permissions (already includes role permissions from backend)
+        return user.permissions as Permission[]
       },
 
       hasPermission: (permission: Permission) => {

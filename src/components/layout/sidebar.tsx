@@ -91,9 +91,12 @@ export function Sidebar({ className }: SidebarProps) {
                   )}
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.label}
-                  suppressHydrationWarning
                 >
-                  <Icon className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} aria-hidden="true" suppressHydrationWarning />
+                  <Icon 
+                    className={cn("h-5 w-5 flex-shrink-0", isActive && "text-primary")} 
+                    aria-hidden="true"
+                    suppressHydrationWarning 
+                  />
                   <AnimatePresence mode="wait">
                     {!sidebarCollapsed && (
                       <motion.span
@@ -101,6 +104,7 @@ export function Sidebar({ className }: SidebarProps) {
                         animate={{ opacity: 1, width: "auto" }}
                         exit={{ opacity: 0, width: 0 }}
                         className="flex-1 truncate"
+                        suppressHydrationWarning
                       >
                         {item.label}
                       </motion.span>

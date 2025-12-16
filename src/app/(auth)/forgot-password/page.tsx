@@ -41,8 +41,8 @@ export default function ForgotPasswordPage() {
       // Call real API
       await api.forgotPassword(email)
       setIsSuccess(true)
-    } catch (error: any) {
-      setError(error.message || "Có lỗi xảy ra. Vui lòng thử lại.")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Có lỗi xảy ra. Vui lòng thử lại.")
     } finally {
       setIsSubmitting(false)
     }

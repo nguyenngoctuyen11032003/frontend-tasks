@@ -36,7 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { mockUsers } from "@/mocks/data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import type { ChatRoom, User } from "@/types"
@@ -58,7 +57,8 @@ export function GroupInfoSheet({ open, onOpenChange, room, currentUserId }: Grou
 
   const members = room.members || []
   const memberIds = members.map((m: any) => m.id)
-  const availableUsers = mockUsers.filter((u) => !memberIds.includes(u.id) && u.id !== currentUserId)
+  // TODO: Fetch available users from API
+  const availableUsers: User[] = []
   
   const filteredUsers = availableUsers.filter(
     (user) =>
@@ -327,7 +327,7 @@ export function GroupInfoSheet({ open, onOpenChange, room, currentUserId }: Grou
             {selectedMembers.length > 0 && (
               <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-lg">
                 {selectedMembers.map((memberId) => {
-                  const member = mockUsers.find((u) => u.id === memberId)
+                  const member = availableUsers.find((u) => u.id === memberId)
                   if (!member) return null
                   return (
                     <Badge key={memberId} variant="secondary" className="gap-1 pr-1">

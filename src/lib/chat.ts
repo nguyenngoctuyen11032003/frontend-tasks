@@ -1,5 +1,4 @@
 import type { Message, User } from "@/types"
-import { mockUsers } from "@/mocks/data"
 
 // Temporary mock message type matching existing data structure
 export interface MockMessage {
@@ -15,21 +14,17 @@ export interface MockMessage {
   fileSize?: number
 }
 
-// Convert MockMessage to Message with proper User objects
+// Note: These conversion functions are deprecated
+// Use real API data instead of mock data
 export function convertMockMessage(mockMessage: MockMessage): Message {
-  const sender = mockUsers.find((u) => u.id === mockMessage.senderId) || mockUsers[0]
-  const readByUsers = mockMessage.readBy
-    .map((userId) => mockUsers.find((u) => u.id === userId))
-    .filter((user): user is User => user !== undefined)
-
   return {
     id: mockMessage.id,
     chatId: mockMessage.roomId,
     content: mockMessage.content,
     type: mockMessage.type,
-    sender,
+    sender: { id: mockMessage.senderId, name: 'User', email: '' } as User,
     attachmentUrls: mockMessage.fileUrl ? [mockMessage.fileUrl] : undefined,
-    readBy: readByUsers,
+    readBy: [],
     createdAt: mockMessage.createdAt,
   }
 }

@@ -19,7 +19,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { useSocketTaskUpdates } from "@/hooks/use-socket"
-import { mockUsers } from "@/mocks/data"
 import { cn } from "@/lib/utils"
 
 interface Activity {
@@ -40,7 +39,7 @@ const mockActivities: Activity[] = [
   {
     id: "act-1",
     type: "task_completed",
-    user: { id: "1", name: "Nguyễn Văn A", avatar: mockUsers[0].avatarUrl },
+    user: { id: "1", name: "Nguyễn Văn A", avatar: "/placeholder.svg" },
     action: "đã hoàn thành",
     target: "Thiết kế UI trang chủ",
     timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
@@ -48,7 +47,7 @@ const mockActivities: Activity[] = [
   {
     id: "act-2",
     type: "comment",
-    user: { id: "2", name: "Trần Thị B", avatar: mockUsers[1].avatarUrl },
+    user: { id: "2", name: "Trần Thị B", avatar: "/placeholder.svg" },
     action: "đã bình luận trong",
     target: "API Integration",
     timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
@@ -56,7 +55,7 @@ const mockActivities: Activity[] = [
   {
     id: "act-3",
     type: "task_created",
-    user: { id: "3", name: "Lê Văn C", avatar: mockUsers[2].avatarUrl },
+    user: { id: "3", name: "Lê Văn C", avatar: "/placeholder.svg" },
     action: "đã tạo công việc",
     target: "Review code module Auth",
     timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
@@ -64,7 +63,7 @@ const mockActivities: Activity[] = [
   {
     id: "act-4",
     type: "user_added",
-    user: { id: "1", name: "Nguyễn Văn A", avatar: mockUsers[0].avatarUrl },
+    user: { id: "1", name: "Nguyễn Văn A", avatar: "/placeholder.svg" },
     action: "đã thêm",
     target: "Phạm Thị D vào dự án E-commerce",
     timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
@@ -72,7 +71,7 @@ const mockActivities: Activity[] = [
   {
     id: "act-5",
     type: "project_created",
-    user: { id: "4", name: "Hoàng Văn E", avatar: mockUsers[3].avatarUrl },
+    user: { id: "4", name: "Hoàng Văn E", avatar: "/placeholder.svg" },
     action: "đã tạo dự án",
     target: "Mobile App Redesign",
     timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),

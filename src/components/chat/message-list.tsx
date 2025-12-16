@@ -5,7 +5,6 @@ import { motion } from "framer-motion"
 import { Check, CheckCheck, File, Download, ImageIcon as ImageIconLucide } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { mockRoleDefinitions } from "@/mocks/data"
 import { cn, formatTime } from "@/lib/utils"
 import type { Message, User } from "@/types"
 
@@ -39,9 +38,8 @@ export function MessageList({
 
   const getUserRoleColor = (user: User | undefined) => {
     if (!user || !user.roles || user.roles.length === 0) return undefined
-    const primaryRole = user.roles[0]
-    const roleDefinition = mockRoleDefinitions.find(r => r.name === primaryRole)
-    return roleDefinition?.color
+    // Role colors should come from backend or be predefined
+    return undefined
   }
 
   const formatDate = (date: string) => {

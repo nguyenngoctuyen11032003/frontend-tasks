@@ -15,6 +15,7 @@ function AuthCallbackContent() {
     const handleCallback = async () => {
       const token = searchParams.get("token")
       const userParam = searchParams.get("user")
+      const redirectParam = searchParams.get("redirect")
 
       if (!token || !userParam) {
         toast.error("Đăng nhập thất bại", {
@@ -28,27 +29,33 @@ function AuthCallbackContent() {
         // Parse user data
         const user = JSON.parse(decodeURIComponent(userParam))
 
-        // Save to store
+        // Save to store - IMPORTANT: Wait for zustand to persist before redirecting
         setToken(token)
         setUser(user)
 
-        // Redirect based on role
-        const roles = user.roles || []
-        let redirectPath = "/dashboard"
+        // Determine redirect path based on role
+        let redirectPath = redirectParam || "/dashboard"
 
-        if (roles.includes("super_admin") || roles.includes("admin")) {
-          redirectPath = "/admin"
-        } else if (roles.includes("manager")) {
-          redirectPath = "/projects"
-        } else if (roles.includes("member")) {
-          redirectPath = "/tasks"
+        // If no explicit redirect, determine by role
+        if (!redirectParam) {
+          const roles = user.roles || []
+          if (roles.includes("super_admin") || roles.includes("admin")) {
+            redirectPath = "/admin"
+          } else if (roles.includes("manager")) {
+            redirectPath = "/projects"
+          } else if (roles.includes("member")) {
+            redirectPath = "/tasks"
+          }
         }
 
-        toast.success("Đăng nhập thành công!", {
-          description: `Chào mừng ${user.name}!`
-        })
-
-        router.push(redirectPath)
+        // Give zustand time to persist state to localStorage
+        // This is important for middleware to detect auth state
+        setTimeout(() => {
+          toast.success("Đăng nhập thành công!", {
+            description: `Chào mừng ${user.name}!`
+          })
+          router.push(redirectPath)
+        }, 500)
       } catch (error) {
         console.error("Auth callback error:", error)
         toast.error("Đăng nhập thất bại", {

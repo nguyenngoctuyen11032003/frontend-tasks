@@ -12,11 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { useAuthStore } from "@/stores/auth-store"
 
 export default function LoginPage() {
-  const router = useRouter()
-  const { login, isLoading } = useAuthStore()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -51,29 +48,35 @@ export default function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      // Call real API through auth store
-      const result = await login(email, password)
-      
-      toast.success("Đăng nhập thành công!", {
-        description: `Chào mừng bạn quay trở lại`,
+      // Call backend API directly to get auth-callback redirect URL
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+      const response = await fetch(`${apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       })
 
-      // Redirect based on user role
-      const roles = result?.user?.roles || []
-      let redirectPath = "/dashboard"
-
-      if (roles.includes("super_admin") || roles.includes("admin")) {
-        redirectPath = "/admin"
-      } else if (roles.includes("manager")) {
-        redirectPath = "/projects"
-      } else if (roles.includes("member")) {
-        redirectPath = "/tasks"
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Đăng nhập thất bại')
       }
 
-      router.push(redirectPath)
-    } catch (error: any) {
+      const result = await response.json()
+      
+      // The backend should return a redirect URL or token+user
+      if (result.redirectUrl) {
+        // Backend sends auth-callback URL, use it
+        window.location.href = result.redirectUrl
+      } else if (result.accessToken && result.user) {
+        // Fallback: Create auth-callback URL manually
+        const callbackUrl = `/auth-callback?token=${result.accessToken}&user=${encodeURIComponent(JSON.stringify(result.user))}`
+        window.location.href = callbackUrl
+      } else {
+        throw new Error('Phản hồi đăng nhập không hợp lệ')
+      }
+    } catch (error: unknown) {
       // Check if account is locked
-      const errorMessage = error.message || "Email hoặc mật khẩu không đúng"
+      const errorMessage = error instanceof Error ? error.message : "Email hoặc mật khẩu không đúng"
       const isLocked = errorMessage.toLowerCase().includes("khóa") || 
                        errorMessage.toLowerCase().includes("locked")
       

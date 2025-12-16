@@ -37,7 +37,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InviteMemberModal } from "@/components/team/invite-member-modal"
 import { EmailComposeModal } from "@/components/team/email-compose-modal"
 import { RoleManagementDialog } from "@/components/team/role-management-dialog"
-import { mockUsers, mockTasks } from "@/mocks/data"
 import { useRolesStore } from "@/stores/roles-store"
 import { useAuthStore } from "@/stores/auth-store"
 import api from "@/lib/api"
@@ -93,9 +92,7 @@ export default function TeamPage() {
       } catch (err) {
         console.error("Error fetching data:", err)
         setError(err instanceof Error ? err.message : "Failed to fetch data")
-        // Fall back to mock data if API fails
-        setUsers(mockUsers)
-        setTasks(mockTasks)
+        // Fetch roles even on error
         fetchRoles()
       } finally {
         setIsLoading(false)
@@ -114,6 +111,11 @@ export default function TeamPage() {
     return String(role)
   }
 
+  const getRoleDisplay = (role: any): string => {
+    const roleName = getRoleName(role)
+    return getRoleDisplayName(roleName)
+  }
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -124,7 +126,7 @@ export default function TeamPage() {
     return matchesSearch && matchesStatus && matchesDepartment && matchesRole
   })
 
-  const uniqueRoles = Array.from(new Set(mockUsers.flatMap((u) => u.roles)))
+  const uniqueRoles = Array.from(new Set(users.flatMap((u) => u.roles).map((role) => getRoleName(role))))
 
   const getInitials = (name: string) => {
     return name
@@ -294,9 +296,9 @@ export default function TeamPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tất cả vai trò</SelectItem>
-                    {uniqueRoles.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {getRoleDisplayName(role)}
+                    {uniqueRoles.map((roleName) => (
+                      <SelectItem key={roleName} value={roleName}>
+                        {getRoleDisplayName(roleName)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -456,7 +458,7 @@ export default function TeamPage() {
                       </DropdownMenu>
                     </div>
                     <h3 className="font-semibold mb-1">{user.name}</h3>
-                    <p className="text-sm text-muted-foreground mb-2">{user.role}</p>
+                    <p className="text-sm text-muted-foreground mb-2">{getRoleDisplay(user.role)}</p>
                     <div className="flex flex-wrap gap-1 mb-4">
                       {user.roles.slice(0, 2).map((role) => {
                         const roleName = getRoleName(role)
@@ -543,7 +545,7 @@ export default function TeamPage() {
                         </td>
                         <td className="p-4">
                           <p className="text-sm">{user.department || "-"}</p>
-                          <p className="text-xs text-muted-foreground">{user.role}</p>
+                          <p className="text-xs text-muted-foreground">{getRoleDisplay(user.role)}</p>
                         </td>
                         <td className="p-4">
                           <div className="flex flex-wrap gap-1">
@@ -637,7 +639,7 @@ export default function TeamPage() {
                   </div>
                   <div>
                     <DialogTitle>{selectedUser.name}</DialogTitle>
-                    <DialogDescription>{selectedUser.role}</DialogDescription>
+                    <DialogDescription>{getRoleDisplay(selectedUser.role)}</DialogDescription>
                   </div>
                 </div>
               </DialogHeader>

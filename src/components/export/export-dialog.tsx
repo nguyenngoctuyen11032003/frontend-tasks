@@ -18,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileDown, FileSpreadsheet, FileJson, FileText, Printer, Calendar, Users } from "lucide-react"
 import { exportToCSV, exportToJSON, printContent, generateFilename } from "@/lib/export-utils"
 import { toast } from "sonner"
-import { mockUsers } from "@/mocks/data"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ExportDialogProps {
@@ -231,11 +230,7 @@ export function ExportDialog({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Tất cả mọi người</SelectItem>
-                      {mockUsers.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name}
-                        </SelectItem>
-                      ))}
+                      {/* Users will be fetched from API/Store */}
                     </SelectContent>
                   </Select>
                 </div>

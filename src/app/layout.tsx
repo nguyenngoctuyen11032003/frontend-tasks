@@ -7,10 +7,10 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { ThemeProvider as CustomThemeProvider } from "@/hooks/use-custom-theme"
 import { SearchProvider } from "@/hooks/use-search"
 import { FilterProvider } from "@/hooks/use-filters"
-import { MSWProvider } from "@/components/providers/msw-provider"
 import { ReactQueryProvider } from "@/components/providers/react-query-provider"
 import { CommandPaletteProvider } from "@/components/providers/command-palette-provider"
 import { WebVitalsReporter } from "@/components/web-vitals-reporter"
+import { AuthWrapper } from "@/components/auth/auth-wrapper"
 import "./globals.css"
 
 const inter = Inter({
@@ -63,16 +63,16 @@ export default function RootLayout({
           <CustomThemeProvider>
             <SearchProvider>
               <FilterProvider>
-                <MSWProvider>
-                  <ReactQueryProvider>
-                    <CommandPaletteProvider>
+                <ReactQueryProvider>
+                  <CommandPaletteProvider>
+                    <AuthWrapper>
                       {children}
-                      <ToastProvider />
-                      <Analytics />
-                      <WebVitalsReporter />
-                    </CommandPaletteProvider>
-                  </ReactQueryProvider>
-                </MSWProvider>
+                    </AuthWrapper>
+                    <ToastProvider />
+                    <Analytics />
+                    <WebVitalsReporter />
+                  </CommandPaletteProvider>
+                </ReactQueryProvider>
               </FilterProvider>
             </SearchProvider>
           </CustomThemeProvider>

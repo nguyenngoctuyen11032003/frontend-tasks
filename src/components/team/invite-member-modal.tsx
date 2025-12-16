@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { mockRoleDefinitions } from "@/mocks/data"
 import { PERMISSION_LABELS } from "@/types"
 import { useRolesStore } from "@/stores/roles-store"
 import api from "@/lib/api"

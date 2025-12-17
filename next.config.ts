@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   
+  // Add turbopack config to silence webpack warning
+  turbopack: {},
+  
   // Environment-specific settings
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',

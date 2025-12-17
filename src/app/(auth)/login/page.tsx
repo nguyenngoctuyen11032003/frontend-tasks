@@ -248,7 +248,8 @@ export default function LoginPage() {
               size="lg"
               onClick={() => {
                 // Redirect to backend Google OAuth
-                window.location.href = 'http://localhost:3001/api/auth/google'
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+                window.location.href = `${apiUrl}/auth/google`
               }}
             >
               <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">

@@ -44,7 +44,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json()
         // Convert API response to SearchResult format
-        let searchResults: SearchResult[] = []
+        const searchResults: SearchResult[] = []
         
         if (data.tasks) {
           searchResults.push(...data.tasks.map((task: any) => ({

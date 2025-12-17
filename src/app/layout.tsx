@@ -29,8 +29,20 @@ export const metadata: Metadata = {
   generator: "v0.app",
   keywords: ["quản lý công việc", "task management", "project management", "team collaboration"],
   authors: [{ name: "TaskMaster Team" }],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "TaskMaster",
+  },
   icons: {
-    icon: "/next.svg",
+    icon: [
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
   },
 }
 

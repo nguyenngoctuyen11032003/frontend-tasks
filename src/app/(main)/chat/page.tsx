@@ -65,6 +65,7 @@ export default function ChatPage() {
     console.log('[ChatPage] chatsError:', chatsError)
   }, [chatsResponse, chatsError])
   const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null)
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false)
   const { data: selectedChatData } = useChats() // We'll filter this locally
   
   // Messages for selected room
@@ -103,15 +104,12 @@ export default function ChatPage() {
         )
         if (directChat) {
           setSelectedRoom(directChat)
-        }
-      } else {
-        // Select first chat by default
-        if (!selectedRoom && chatsResponse.items[0]) {
-          setSelectedRoom(chatsResponse.items[0])
+          setIsMobileChatOpen(true)
         }
       }
+      // Do NOT auto-select first chat - let user explicitly select on mobile
     }
-  }, [chatsResponse?.items, userIdParam, selectedRoom])
+  }, [chatsResponse?.items, userIdParam])
 
   const chats = Array.isArray(chatsResponse?.items) ? chatsResponse.items.filter(Boolean) : []
   
@@ -257,12 +255,20 @@ export default function ChatPage() {
     return `${names[0]} và ${names.length - 1} người khác đang nhập...`
   }
 
+  const handleCloseChatMobile = () => {
+    // Reset mobile-specific state when closing chat on mobile
+    stopTyping()
+    setSelectedRoom(null)
+    setIsMobileChatOpen(false)
+    setIsGroupInfoOpen(false)
+  }
+
   return (
     <div className="flex h-[calc(100vh-8rem)] rounded-lg border bg-card overflow-hidden">
       {/* Sidebar - Chat List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",
-        selectedRoom && "hidden md:flex"
+        isMobileChatOpen && "hidden md:flex"
       )}>
         <div className="p-3 md:p-4 border-b">
           <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -295,7 +301,10 @@ export default function ChatPage() {
                 return (
                   <button
                     key={room.id}
-                    onClick={() => setSelectedRoom(room)}
+                    onClick={() => {
+                      setSelectedRoom(room)
+                      setIsMobileChatOpen(true)
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors",
                       selectedRoom?.id === room.id ? "bg-accent" : "hover:bg-accent/50",
@@ -366,7 +375,7 @@ export default function ChatPage() {
                 variant="ghost"
                 size="icon"
                 className="md:hidden shrink-0"
-                onClick={() => setSelectedRoom(null)}
+                onClick={handleCloseChatMobile}
               >
                 <X className="h-5 w-5" />
               </Button>

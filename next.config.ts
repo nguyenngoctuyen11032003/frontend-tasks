@@ -1,6 +1,30 @@
 import type { NextConfig } from "next";
 import withPWA from 'next-pwa';
 
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+const resolveBackend = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl);
+    return {
+      origin: `${url.protocol}//${url.host}`,
+      protocol: url.protocol.replace(':', ''),
+      hostname: url.hostname,
+      port: url.port || undefined,
+    } as const;
+  } catch {
+    const fallback = new URL('http://localhost:3001/api');
+    return {
+      origin: `${fallback.protocol}//${fallback.host}`,
+      protocol: 'http',
+      hostname: 'localhost',
+      port: '3001',
+    } as const;
+  }
+};
+
+const backend = resolveBackend(apiUrl);
+
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
@@ -10,15 +34,15 @@ const nextConfig: NextConfig = {
   
   // Environment-specific settings
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+    NEXT_PUBLIC_API_URL: apiUrl,
   },
 
   images: {
     remotePatterns: [
       {
-        protocol: 'http',
-        hostname: 'localhost',
-        port: '3001',
+        protocol: backend.protocol,
+        hostname: backend.hostname,
+        port: backend.port,
         pathname: '/uploads/**',
       },
     ],
@@ -28,7 +52,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/uploads/:path*',
-        destination: 'http://localhost:3001/uploads/:path*',
+        destination: `${backend.origin}/uploads/:path*`,
       },
     ];
   },

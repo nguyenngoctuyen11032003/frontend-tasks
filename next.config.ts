@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import type { RemotePattern } from 'next/dist/shared/lib/image-config';
 import withPWA from 'next-pwa';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -25,6 +26,20 @@ const resolveBackend = (rawUrl: string) => {
 
 const backend = resolveBackend(apiUrl);
 
+const uploadRemotePattern = (): RemotePattern => {
+  const pattern: RemotePattern = {
+    protocol: backend.protocol as 'http' | 'https',
+    hostname: backend.hostname,
+    pathname: '/uploads/**',
+  };
+
+  if (backend.port) {
+    pattern.port = backend.port;
+  }
+
+  return pattern;
+};
+
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
@@ -38,14 +53,7 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    remotePatterns: [
-      {
-        protocol: backend.protocol,
-        hostname: backend.hostname,
-        port: backend.port,
-        pathname: '/uploads/**',
-      },
-    ],
+    remotePatterns: [uploadRemotePattern()],
   },
 
   async rewrites() {
